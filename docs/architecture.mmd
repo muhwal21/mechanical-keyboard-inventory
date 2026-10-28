@@ -1,0 +1,19 @@
+flowchart LR
+  subgraph Browser
+    vue["Vue 3 SPA (View)\nApp.vue + components\napi.js: fetch + X-CSRF-Token"]
+  end
+  subgraph Server["Node.js 24 + Express 5"]
+    direction TB
+    mw["Middleware\nhelmet (CSP) · cors · express-session\ncsrfProtection · requireAuth · requireRole\nvalidateBody (zod) · rate limit"]
+    routes["Routes\nroutes/apiRoutes.js"]
+    ctrl["Controllers\nauth · dashboard · product\nsupplier · stockMovement · user"]
+    svc["Service\nstockService.recordMovement\n(transaction + row lock)"]
+    models["Models (Sequelize ORM)\nUser · Category · Supplier\nProduct · StockMovement"]
+    mw --> routes --> ctrl
+    ctrl --> svc --> models
+    ctrl --> models
+  end
+  db[("MySQL 8\nusers · categories · suppliers\nproducts · stock_movements · sessions")]
+  vue -- "HTTPS JSON /api/*\ncookie keystock.sid" --> mw
+  models -- "parameterized SQL" --> db
+  ctrl -- "JSON response" --> vue

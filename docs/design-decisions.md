@@ -22,7 +22,21 @@ This project can retain a product image, source listing, and listing status as r
 - [Quantara inventory dashboard](https://dribbble.com/shots/26722810-Quantara-Dashboard-Inventory-Management) emphasizes stock visibility: summary metrics, stock-level analysis, item/location details, reorder information, and recent inventory activity. These patterns fit the dashboard and stock history.
 - [Store Inventory Dashboard](https://dribbble.com/shots/25005705-Store-Inventory-Dashboard) mixes stock levels with per-item sales statistics, product edits, and ad promotion actions. The useful parts for this project are the compact stock view and direct product editing. The advertising and customer-sales elements are outside this inventory MVP.
 
-The implementation follows the references' clear summary cards, compact operational tables, and activity history. The interface uses grayscale surfaces with blue for navigation, green for successful/available states, yellow for low stock, and red for critical or archive actions. Destructive archive actions use an in-app confirmation dialog, and successful saves show a green confirmation notice. Light and dark mode selections persist; source product photos retain their original colors. A small seven-day chart counts real stock-log entries, while category mix and low-stock items stay simple for a single stockroom. Its product page is a stock table, not a customer-facing product grid.
+### How the Quantara layout maps to KeyStock
+
+The interface follows the Quantara shot closely, in black and white:
+
+| Quantara | KeyStock |
+| --- | --- |
+| Pill top navigation with an active dot | Same; becomes a floating bottom tab bar on phones |
+| "Inventory" title with three KPI chips (total, low stock, out of stock) | "Ringkasan stok" with total units (+7-day change), restock count, out-of-stock count |
+| Overview bar: "x items require restocking", download, refresh, add stock | Restock alert, CSV export, refresh, record movement |
+| Analytic View: min/avg/max stock + monthly heatmap | Lowest/average/highest stock per SKU + daily heatmap of stock transactions (7/14/30 days, rows: in, out, adjustment, all) |
+| Inventory History: item details + buyer contact | Product detail: rack, last movement, category, reorder point, stock, last three movements, supplier email/phone buttons |
+| Route map | Rack map: one tile per storage location, colored by stock status |
+| Recent Activities table with status filter and pagination | Same, filtered by movement type, 8 rows per page |
+
+Color rules: neutral black/white/gray for surfaces, text, primary buttons, navigation, and the heatmap. Color appears only as stock status — green (aman / stok masuk), yellow (perlu restock / penyesuaian), red (habis / stok keluar / destructive actions). Light and dark mode are two sets of CSS variables (no inversion filter), and the first visit follows the operating system setting. Destructive archive actions use an in-app confirmation dialog. Product photos keep their original colors. The product page is a stock table, not a customer-facing product grid.
 
 ## Product data
 
@@ -33,4 +47,4 @@ The implementation follows the references' clear summary cards, compact operatio
 - Supplier, supplier contact details, storage location, on-hand quantity, and reorder point.
 - Stock movement history that records before/after quantity, user, time, and note.
 
-The current catalog has 23 sourced items from Noir Gear and Work Louder. Those names stay as product brands in the catalog where accurate; they will be removed from the application name, login copy, and dashboard chrome. Supplier contact details and purchase prices not present in the source catalog remain blank. Seed stock and storage locations are simulated for the academic demo.
+The current catalog has 23 sourced items from Noir Gear and Work Louder. Those names stay as product brands in the catalog where accurate; they are kept out of the application name, login copy, and dashboard chrome. Supplier contact details and purchase prices not present in the source catalog remain blank. Seed stock and storage locations are simulated for the academic demo.

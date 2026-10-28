@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  actor Admin
+  participant View as Vue (App.vue)
+  participant MW as Middleware
+  participant C as productController.createProduct
+  participant M as Product model (Sequelize)
+  participant DB as MySQL
+
+  Admin->>View: Isi form "Tambah produk" lalu klik Simpan
+  View->>MW: POST /api/products (JSON + X-CSRF-Token + cookie sesi)
+  MW->>MW: csrfProtection: token header == token sesi?
+  MW->>MW: requireAuth: session.userId ada & akun aktif?
+  MW->>MW: requireRole('admin')
+  MW->>MW: validateBody(productSchema): zod + strip tag HTML
+  alt Data tidak valid
+    MW-->>View: 400 { message, errors[field] }
+    View-->>Admin: Pesan error di bawah field terkait
+  else Valid
+    MW->>C: req.body yang sudah bersih
+    C->>M: Product.create({...req.body, warehouse_stock: 0})
+    M->>DB: INSERT INTO products (...) VALUES (?, ?, ...)
+    DB-->>M: id baru
+    C->>M: Product.findByPk(id, include category + supplier)
+    M->>DB: SELECT ... LEFT JOIN categories, suppliers
+    C-->>View: 201 { product }
+    View->>View: loadAll() lalu tampilkan notifikasi sukses
+    View-->>Admin: Tabel produk ter-update
+  end

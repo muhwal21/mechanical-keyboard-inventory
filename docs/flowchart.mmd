@@ -1,0 +1,39 @@
+flowchart TD
+  start([Buka aplikasi]) --> session{Sesi login masih berlaku?}
+  session -- Tidak --> auth[Halaman Masuk / Daftar akun]
+  auth --> choose{Pilih aksi}
+  choose -- Daftar akun --> register[Isi nama, email, kata sandi]
+  register --> regValid{Validasi server lolos?}
+  regValid -- Tidak --> register
+  regValid -- Ya --> staffAccount[Akun baru dibuat sebagai staff\nsesi dibuat]
+  choose -- Masuk --> login[Isi email dan kata sandi]
+  login --> loginValid{Kredensial cocok\ndan akun aktif?}
+  loginValid -- Tidak --> login
+  loginValid -- Ya --> dashboard
+  staffAccount --> dashboard
+  session -- Ya --> dashboard[Ringkasan stok]
+
+  dashboard --> nav{Menu}
+  nav --> products[Produk]
+  nav --> suppliers[Supplier]
+  nav --> movements[Pergerakan stok]
+  nav --> users[Pengguna]
+
+  products --> productRole{Peran admin?}
+  productRole -- Ya --> productCrud[Tambah / ubah / arsipkan produk]
+  productRole -- Tidak --> productRead[Lihat dan cari produk]
+  suppliers --> supplierRole{Peran admin?}
+  supplierRole -- Ya --> supplierCrud[Tambah / ubah / arsipkan supplier]
+  supplierRole -- Tidak --> supplierRead[Lihat kontak supplier]
+  users --> userRole{Peran admin?}
+  userRole -- Ya --> userManage[Ubah peran / nonaktifkan akun]
+  userRole -- Tidak --> forbidden[403 - menu tidak ditampilkan]
+
+  movements --> record[Catat stok masuk / keluar / penyesuaian]
+  products --> record
+  record --> stockCheck{Stok keluar melebihi saldo?}
+  stockCheck -- Ya --> record
+  stockCheck -- Tidak --> saved[Transaksi DB: update saldo produk\n+ simpan stock_movements]
+  saved --> dashboard
+
+  dashboard --> logout[Keluar] --> auth

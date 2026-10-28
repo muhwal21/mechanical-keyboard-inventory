@@ -1,61 +1,126 @@
 # KeyStock — Mechanical Keyboard Inventory
 
-Web app inventaris untuk keyboard mechanical dan aksesori. Project ini memakai Vue.js untuk antarmuka, Node.js dengan Express untuk API MVC, dan MySQL untuk penyimpanan relasional.
+Sistem manajemen inventaris gudang untuk keyboard mechanical dan aksesori. Antarmuka **Vue 3**, API **Node.js + Express** berpola MVC, database **MySQL** lewat **Sequelize ORM**.
 
-## Fokus project
+Proyek UAS *Web Application Development* — Universitas Cakrawala.
 
-- Melihat ringkasan stok dan produk yang perlu diisi ulang.
-- Memilih tampilan terang atau gelap dengan dasar hitam-putih dan aksen biru untuk navigasi, hijau untuk status berhasil/aman, kuning untuk restock, dan merah untuk stok habis atau aksi arsip.
-- Mengelola katalog produk keyboard dan aksesori.
-- Memisahkan brand pembuat produk dari supplier, menyimpan kontak supplier, harga beli, harga jual, batas minimum, dan lokasi rak.
-- Mencatat stok masuk, stok keluar, dan penyesuaian stok beserta pengguna yang mencatatnya.
-- Membatasi akses melalui login dengan peran admin dan staff.
-- Menampilkan sumber marketplace sebagai referensi katalog; sinkronisasi API marketplace belum termasuk MVP.
+> **Kesesuaian brief:** soal UAS menyebut Laravel dan Eloquent. Stack Vue.js + Node.js + MySQL dipakai atas persetujuan dosen. Padanan konsep Eloquent (relasi, eager loading, `withCount`, transaksi) dijelaskan di [docs/requirements-and-architecture.md](docs/requirements-and-architecture.md#padanan-sequelize--eloquent).
 
-## Stack dan keputusan
+## Fitur
 
-- Frontend: Vue 3 + Vite.
-- Backend: Node.js 24 + Express, dengan struktur routes, controllers, models, dan middleware.
-- Database: MySQL 8.4.
-- ORM: Sequelize; relasi dan operasi query akan dijelaskan sebagai padanan implementasi Eloquent pada materi esai.
+- **Autentikasi:** registrasi (akun baru = staff), login, logout, session di MySQL.
+- **Ringkasan stok** (desain mengikuti referensi Quantara, hitam-putih): KPI total unit / perlu restock / stok habis, heatmap aktivitas 7/14/30 hari, stok terendah–rata-rata–tertinggi, detail produk + kontak supplier, peta rak, tabel aktivitas terbaru dengan filter + pagination, ekspor CSV.
+- **Produk:** CRUD lengkap (arsip = soft delete), pencarian, filter kategori/supplier/stok rendah, validasi per-field.
+- **Supplier:** CRUD + kontak (telepon, email, situs).
+- **Pergerakan stok:** stok masuk, keluar, penyesuaian dengan pratinjau saldo; setiap catatan menyimpan stok sebelum/sesudah, pengguna, waktu.
+- **Pengguna (admin):** ubah peran admin/staff, nonaktifkan akun, tabel rincian hak akses.
+- Mode terang/gelap, responsif (tab bar bawah di ponsel, tabel jadi kartu).
 
-> **Kesesuaian brief:** Dokumen soal tertulis menyebut Laravel dan Eloquent. Stack Vue.js + Node.js + MySQL dipilih berdasarkan persetujuan dosen yang disampaikan mahasiswa. Implementasi dan esai akan menjelaskan keputusan tersebut secara terbuka.
+## Hak akses
 
-## Struktur
+| Aksi | Admin | Staff |
+| --- | :---: | :---: |
+| Lihat ringkasan, produk, supplier, riwayat stok | ✓ | ✓ |
+| Catat stok masuk / keluar / penyesuaian | ✓ | ✓ |
+| Tambah / ubah / arsipkan produk dan supplier | ✓ | ✗ |
+| Kelola pengguna | ✓ | ✗ |
 
-```text
-client/                 Vue.js app
-server/                 Express API (MVC)
-  src/controllers/       HTTP handlers
-  src/models/            Sequelize models
-  src/routes/            API routes
-  src/middleware/        authentication, authorization, CSRF, validation
-  src/services/          domain operations
-  src/seeders/           sample products and demo accounts
-docs/                   requirements, ERD, and flow diagrams
-docker-compose.yml       local MySQL service
+## Akun demo
+
+Akun dibuat oleh seeder dari nilai `SEED_*` di `.env` (lokal) atau *Variables* Railway (production). Password **tidak** disimpan di repository.
+
+| Peran | Email | Password |
+| --- | --- | --- |
+| Admin | nilai `SEED_ADMIN_EMAIL` (contoh: `admin@keystock.local`) | nilai `SEED_ADMIN_PASSWORD` |
+| Staff | nilai `SEED_STAFF_EMAIL` (contoh: `staff@keystock.local`) | nilai `SEED_STAFF_PASSWORD` |
+
+Akun staff tambahan bisa dibuat sendiri lewat tab **Daftar akun** di halaman login.
+
+## Menjalankan di komputer lokal
+
+Prasyarat: Node.js 24 (lihat `.nvmrc`), npm, dan MySQL 8 (lokal atau Docker Desktop).
+
+```bash
+# 1. Konfigurasi
+cp .env.example .env
+#    - SESSION_SECRET  -> hasil: openssl rand -hex 32
+#    - DB_PASSWORD / DB_ROOT_PASSWORD -> password MySQL lokal
+#    - SEED_ADMIN_PASSWORD (min. 12 karakter), opsional SEED_STAFF_PASSWORD
+
+# 2. Database (pilih salah satu)
+docker compose up -d mysql            # MySQL 8.4 via Docker
+#  atau import database/schema.sql ke MySQL lokal lalu buat user sesuai .env
+
+# 3. Dependency + data
+npm install
+npm run db:sync     # buat / sesuaikan tabel
+npm run db:seed     # kategori, supplier, 23 produk, riwayat stok demo, akun demo
+
+# 4. Jalankan (API :3000 + Vite :5173)
+npm run dev
 ```
 
-## Menjalankan project
+Buka <http://localhost:5173>.
 
-1. Salin `.env.example` menjadi `.env`.
-2. Ganti `SESSION_SECRET` dengan hasil `openssl rand -hex 32`, lalu ganti password admin demo dan password MySQL di `.env`. Password admin minimal 12 karakter. File `.env` tidak dikomit.
-3. Pastikan Docker Desktop berjalan, lalu jalankan `docker compose up -d mysql` (atau siapkan MySQL 8.4 lokal dengan nilai `.env` yang sama).
-4. Jalankan `npm install` di root project.
-5. Unduh gambar katalog ke asset lokal dengan `npm run assets:download`.
-6. Buat tabel dengan `npm run db:sync`, lalu isi katalog dan admin demo dengan `npm run db:seed`.
-7. Jalankan `npm run dev`, lalu buka `http://localhost:5173`.
+| Script | Fungsi |
+| --- | --- |
+| `npm run dev` | API (node --watch) + Vite dev server |
+| `npm run db:sync` | `sequelize.sync()` + migrasi kolom tambahan |
+| `npm run db:seed` | Isi data demo (idempoten) |
+| `npm run db:fresh` | **Hapus** semua tabel domain lalu seed ulang (reset demo sebelum rekam video) |
+| `npm run build` | Build Vue ke `client/dist` |
+| `npm start` | Jalankan API; di `NODE_ENV=production` juga menyajikan `client/dist` |
+| `npm run assets:download` | Unduh ulang foto katalog ke `client/public/images` |
 
-Jika ingin akun staff untuk demo role, isi ketiga variabel `SEED_STAFF_*`; biarkan semuanya kosong jika tidak diperlukan. Data stok seed bersifat simulasi. Login menggunakan `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` yang kamu isi di `.env`.
+## Struktur project (MVC)
 
-Katalog contoh mengambil referensi produk dari Noir Gear dan Work Louder; nama-nama tersebut adalah brand atau sumber produk, bukan nama aplikasi. Nilai stok dan lokasi awal disimulasikan untuk demo. Harga listing hanya referensi; harga beli dan harga jual inventaris dibiarkan kosong sampai dicatat. Kredensial admin demo disimpan di environment lokal dan tidak dikomit ke repository.
+```text
+client/                         View — Vue 3 + Vite
+  src/App.vue                   halaman, state, dan pemanggilan API
+  src/components/               ActivityHeatmap.vue, RackMap.vue
+  src/api.js                    fetch wrapper + header X-CSRF-Token
+  src/style.css                 design tokens terang/gelap
+server/src/
+  routes/apiRoutes.js           routing URL -> middleware -> controller
+  controllers/                  Controller: auth, dashboard, product, supplier, stockMovement, user
+  models/index.js               Model: User, Category, Supplier, Product, StockMovement + relasi
+  services/stockService.js      logika stok (transaksi + row lock)
+  middleware/                   auth (requireAuth/requireRole), csrf, validate, validators (zod), errorHandler
+  db/                           sync & migrasi kolom
+  seeders/                      catalog.json + seed.js
+database/schema.sql             DDL MySQL (5 tabel, foreign key, index)
+docs/                           kebutuhan, arsitektur, ERD, flowchart, deployment, keputusan desain
+railway.json                    konfigurasi build/start Railway
+docker-compose.yml              MySQL lokal
+```
 
-Gambar produk disimpan di `client/public/images/` untuk dipakai saat demo tanpa hotlink CDN. URL produk sumber tetap dicatat agar referensi katalog bisa diperiksa.
+## Dokumentasi
 
-## Rencana deliverables
+- [Kebutuhan, arsitektur MVC, routing, keamanan](docs/requirements-and-architecture.md)
+- [Langkah deployment Railway + troubleshooting](docs/deployment.md)
+- [Keputusan desain (referensi Quantara)](docs/design-decisions.md)
+- Diagram (PNG siap tempel ke PDF): [ERD](docs/diagrams/erd.png) · [Arsitektur](docs/diagrams/architecture.png) · [Request flow](docs/diagrams/request-flow.png) · [Flowchart](docs/diagrams/flowchart.png) — sumber Mermaid di `docs/*.mmd`
 
-- [ ] Aplikasi CRUD produk dan pergerakan stok.
-- [ ] ERD minimal empat tabel berelasi.
-- [ ] Validasi input, CSRF, session, autentikasi, dan kontrol akses.
-- [ ] File SQL/migrasi, `.env.example`, dan panduan setup.
-- [ ] Deployment, PDF submission, dan video presentasi maksimal 15 menit.
+## Keamanan singkat
+
+- **SQL Injection:** semua query lewat Sequelize (parameter binding).
+- **XSS:** Vue meng-escape output (tanpa `v-html`), server membuang tag HTML dan menolak URL non-`http(s)`, header CSP via Helmet.
+- **CSRF:** token per sesi wajib di header `X-CSRF-Token` untuk request yang mengubah data.
+- **Session:** cookie `HttpOnly` + `SameSite=Lax` (+ `Secure` di production), disimpan di MySQL, ID sesi diganti saat login.
+- **Password:** bcrypt (cost 12); rate limit login dan registrasi.
+- **Akses:** `requireAuth` + `requireRole('admin')` di setiap route sensitif.
+
+## Data dan sumber
+
+Katalog contoh mengambil referensi produk dari Noir Gear dan Work Louder (nama brand, bukan nama aplikasi). Stok, lokasi rak, dan riwayat 7 hari terakhir adalah simulasi untuk demo. Harga listing hanya referensi; harga beli/jual dibiarkan kosong sampai diisi admin. Foto produk disimpan lokal di `client/public/images/`.
+
+## Checklist deliverables UAS
+
+- [x] Aplikasi CRUD produk, supplier, dan pergerakan stok
+- [x] ERD 5 tabel berelasi + skrip `database/schema.sql`
+- [x] Registrasi, login, logout, session, role admin/staff
+- [x] Validasi input server, CSRF, sanitasi XSS, query berparameter
+- [x] `.env.example` + README instalasi + akun demo
+- [x] Konfigurasi deployment (`railway.json`, `docs/deployment.md`)
+- [ ] Deploy ke Railway dan isi URL live
+- [ ] PDF submission + video presentasi (maks. 15 menit)
