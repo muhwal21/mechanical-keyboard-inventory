@@ -4,11 +4,36 @@ import {
   AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, Boxes, Building2,
   Check, ChevronDown, CircleDollarSign, ExternalLink, History, Keyboard,
   LayoutDashboard, LogOut, Mail, MapPin, Package, Phone, Plus, Search,
-  Settings, ShieldCheck, Truck, X,
+  Settings, ShieldCheck, Truck, X, Moon, Sun,
 } from '@lucide/vue';
 import { get, post, put, remove, setCsrfToken } from './api.js';
 
 const user = ref(null);
+function readThemePreference() {
+  try {
+    return localStorage.getItem('keystock-theme') === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+const themeMode = ref(readThemePreference());
+document.documentElement.dataset.theme = themeMode.value;
+
+function setTheme(mode) {
+  themeMode.value = mode;
+  document.documentElement.dataset.theme = mode;
+  try {
+    localStorage.setItem('keystock-theme', mode);
+  } catch {
+    // Theme still applies for this page even if browser storage is unavailable.
+  }
+}
+
+function toggleTheme() {
+  setTheme(themeMode.value === 'dark' ? 'light' : 'dark');
+}
+
 const checkingSession = ref(true);
 const apiUnavailable = ref(false);
 const activePage = ref('overview');
@@ -492,10 +517,16 @@ onMounted(async () => {
 
   <div v-else-if="!user" class="auth-page">
     <section class="auth-panel">
-      <a class="brand auth-brand" href="#">
-        <span class="brand-mark"><Keyboard :size="21" /></span>
-        <span><strong>KEYSTOCK</strong><small>INVENTORY WORKSPACE</small></span>
-      </a>
+      <div class="auth-topline">
+        <a class="brand auth-brand" href="#">
+          <span class="brand-mark"><Keyboard :size="21" /></span>
+          <span><strong>KEYSTOCK</strong><small>INVENTORY WORKSPACE</small></span>
+        </a>
+        <button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme">
+          <Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" />
+          <span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span>
+        </button>
+      </div>
       <div class="auth-content">
         <div class="eyebrow"><span class="eyebrow-dot"></span> MECHANICAL KEYBOARD STOCKROOM</div>
         <h1>Kelola stok<br />dengan jelas.</h1>
@@ -556,7 +587,7 @@ onMounted(async () => {
     <main class="main-area">
       <header class="topbar">
         <div class="breadcrumb"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ pageTitle }}</strong></div>
-        <div class="top-actions"><span class="today-label">{{ today }}</span><span class="top-divider"></span><div class="top-user"><div class="avatar small-avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div><span>{{ user.name }}</span></div></div>
+        <div class="top-actions"><button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" /><span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span></button><span class="today-label">{{ today }}</span><span class="top-divider"></span><div class="top-user"><div class="avatar small-avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div><span>{{ user.name }}</span></div></div>
       </header>
 
       <div class="content-wrap">

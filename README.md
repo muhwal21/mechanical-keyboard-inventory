@@ -5,6 +5,7 @@ Web app inventaris untuk keyboard mechanical dan aksesori. Project ini memakai V
 ## Fokus project
 
 - Melihat ringkasan stok dan produk yang perlu diisi ulang.
+- Memilih tampilan terang atau gelap dengan palet antarmuka hitam-putih.
 - Mengelola katalog produk keyboard dan aksesori.
 - Memisahkan brand pembuat produk dari supplier, menyimpan kontak supplier, harga beli, harga jual, batas minimum, dan lokasi rak.
 - Mencatat stok masuk, stok keluar, dan penyesuaian stok beserta pengguna yang mencatatnya.
