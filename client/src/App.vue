@@ -249,14 +249,6 @@ function recordFromDetail(product) {
   openMovement(product);
 }
 
-function openProductInList(product) {
-  if (!product) return;
-  searchQuery.value = product.sku;
-  selectedCategory.value = '';
-  stockFilter.value = 'all';
-  navigate('products');
-}
-
 function focusProductSearch() {
   navigate('products').then(() => nextTick(() => document.querySelector('.table-toolbar input[type="search"]')?.focus()));
 }
@@ -992,12 +984,11 @@ onMounted(async () => {
               </div>
             </article>
 
-            <article class="panel rack-card">
-              <div class="card-head"><h2>Peta rak</h2><span class="card-note">{{ catalog.filter((product) => product.storage_location).length }} lokasi</span></div>
-              <RackMap :products="catalog" :selected-id="overviewProductId" @select="(id) => { overviewProductId = String(id); openProductDetail(id); }" />
-              <div class="rack-legend"><span><i class="good"></i>Aman</span><span><i class="low"></i>Restock</span><span><i class="empty"></i>Habis</span></div>
-              <div class="location-chip"><MapPin :size="15" /><div><small>Lokasi</small><strong>Gudang utama · Rak A</strong></div></div>
-            </article>
+          </section>
+
+          <section class="panel rack-panel">
+            <div class="card-head"><h2>Peta rak gudang</h2><span class="card-note">Tinggi kardus = jumlah stok</span></div>
+            <RackMap :products="catalog" :selected-id="overviewProductId" @select="(id) => { overviewProductId = String(id); openProductDetail(id); }" />
           </section>
 
           <section class="panel activity-card">
@@ -1151,7 +1142,7 @@ onMounted(async () => {
               <legend>Supplier &amp; penyimpanan</legend>
               <div class="form-grid">
                 <label :class="{ invalid: fieldErrors.supplier_id }">Supplier<select v-model="productForm.supplier_id"><option value="">Belum ditentukan</option><option v-for="supplier in suppliers" :key="supplier.id" :value="String(supplier.id)">{{ supplier.name }}{{ supplier.is_active ? '' : ' (arsip)' }}</option></select><small v-if="fieldErrors.supplier_id" class="field-error">{{ fieldErrors.supplier_id }}</small></label>
-                <label :class="{ invalid: fieldErrors.storage_location }">Lokasi rak<input v-model="productForm.storage_location" maxlength="80" placeholder="Contoh: A-01 / Drawer 2" /><small v-if="fieldErrors.storage_location" class="field-error">{{ fieldErrors.storage_location }}</small></label>
+                <label :class="{ invalid: fieldErrors.storage_location }">Lokasi rak<input v-model="productForm.storage_location" maxlength="8" placeholder="RAK-TINGKAT-SLOT, mis. A-1-05" @blur="productForm.storage_location = productForm.storage_location.trim().toUpperCase()" /><small v-if="fieldErrors.storage_location" class="field-error">{{ fieldErrors.storage_location }}</small></label>
               </div>
             </fieldset>
             <fieldset class="form-section">

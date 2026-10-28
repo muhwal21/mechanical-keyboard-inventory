@@ -77,7 +77,10 @@ export const productSchema = z.object({
   currency: z.enum(['IDR', 'USD']).default('IDR'),
   listing_status: plainText({ min: 1, max: 120, label: 'Status listing' }).default('Ready'),
   reorder_point: z.coerce.number().int().nonnegative('Batas minimum tidak boleh negatif.').max(1000000),
-  storage_location: plainText({ max: 80, label: 'Lokasi rak' }).optional().default(''),
+  // Rack location RAK-TINGKAT-SLOT, e.g. A-1-05 (rack letter, shelf level, slot number).
+  storage_location: z.string().trim().toUpperCase()
+    .regex(/^([A-Z]-[1-9]-\d{2})?$/, 'Format lokasi RAK-TINGKAT-SLOT, contoh A-1-05.')
+    .optional().default(''),
   source_url: optionalUrl,
   specifications: z.record(z.string(), z.unknown()).optional().default({}),
   variants: z.array(plainText({ max: 190, label: 'Varian' })).optional().default([]),

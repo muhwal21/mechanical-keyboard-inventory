@@ -18,6 +18,24 @@ const demoStockLevels = [14, 3, 22, 9, 18, 0, 27, 11, 16, 24, 5, 13, 19, 8, 21, 
 const restockNotes = ['Restock dari supplier', 'Barang datang dari distributor', 'Pembelian ulang batch baru'];
 const saleNotes = ['Penjualan toko offline', 'Pesanan marketplace dikirim', 'Penjualan ke pelanggan tetap'];
 
+// Rack layout for the demo: keyboards on rack A (7 slots per shelf), switches and keycaps
+// on rack B (3 slots), accessories and deskmats on rack C (4 slots). Code: RAK-TINGKAT-SLOT.
+const rackByCategory = { keyboard: 'A', switch: 'B', keycaps: 'B', aksesoris: 'C', deskmat: 'C' };
+const slotsPerShelf = { A: 7, B: 3, C: 4 };
+const rackCounters = {};
+const rackOrder = ['keyboard', 'switch', 'keycaps', 'aksesoris', 'deskmat'];
+const demoLocations = new Map();
+for (const category of rackOrder) {
+  for (const source of catalog.produk.filter((item) => item.kategori === category)) {
+    const rack = rackByCategory[category];
+    const position = rackCounters[rack] ?? 0;
+    rackCounters[rack] = position + 1;
+    const level = Math.floor(position / slotsPerShelf[rack]) + 1;
+    const slot = (position % slotsPerShelf[rack]) + 1;
+    demoLocations.set(source.id, `${rack}-${level}-${String(slot).padStart(2, '0')}`);
+  }
+}
+
 // Simulated cost ratio per category: purchase price = selling price x ratio.
 const costRatio = { keyboard: 0.75, switch: 0.65, aksesoris: 0.6, keycaps: 0.7, deskmat: 0.62 };
 
@@ -96,7 +114,7 @@ function productDefaults(source, categoryId, supplierId, index) {
     listing_status: source.status ?? 'Ready',
     warehouse_stock: simulatedStock,
     reorder_point: 6,
-    storage_location: `A-${String(index + 1).padStart(2, '0')}`,
+    storage_location: demoLocations.get(source.id) ?? null,
     supplier_id: supplierId,
     source_url: source.url ?? source.url_sumber ?? null,
     image_url: localImageExtension ? `/images/${source.id}.${localImageExtension}` : null,
@@ -258,7 +276,8 @@ async function seed({ fresh = false } = {}) {
           supplier_id: product.supplier_id ?? defaults.supplier_id,
           purchase_price: product.purchase_price ?? defaults.purchase_price,
           selling_price: product.selling_price ?? defaults.selling_price,
-          storage_location: product.storage_location || defaults.storage_location,
+          // Old demo codes (A-01) move to the rack format; a location typed by an admin is kept.
+          storage_location: !product.storage_location || /^A-\d{2}$/.test(product.storage_location) ? defaults.storage_location : product.storage_location,
         }, { transaction });
       }
     });
