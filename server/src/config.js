@@ -4,8 +4,18 @@ import { fileURLToPath } from 'node:url';
 
 dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
+// Railway's MySQL service exposes MYSQLHOST, MYSQLPORT, ... ; use them when the DB_*
+// variables are not set, so the same code runs locally and on the hosting platform.
+const env = process.env;
+const railwayFallbacks = {
+  DB_HOST: 'MYSQLHOST', DB_PORT: 'MYSQLPORT', DB_NAME: 'MYSQLDATABASE', DB_USER: 'MYSQLUSER', DB_PASSWORD: 'MYSQLPASSWORD',
+};
+for (const [key, railwayKey] of Object.entries(railwayFallbacks)) {
+  if (!env[key] && env[railwayKey]) env[key] = env[railwayKey];
+}
+
 const required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'SESSION_SECRET'];
-const missing = required.filter((key) => !process.env[key]);
+const missing = required.filter((key) => !env[key]);
 
 if (missing.length) {
   throw new Error(`Missing required environment variables: ${missing.join(', ')}`);

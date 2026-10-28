@@ -123,7 +123,7 @@ async function seed({ fresh = false } = {}) {
   const staffEmail = process.env.SEED_STAFF_EMAIL?.toLowerCase();
   const staffPassword = process.env.SEED_STAFF_PASSWORD;
   if (Boolean(staffEmail) !== Boolean(staffPassword)) {
-    throw new Error('Set both SEED_STAFF_EMAIL and SEED_STAFF_PASSWORD, or leave both unset.');
+    console.warn('Akun staff demo dilewati: isi SEED_STAFF_EMAIL dan SEED_STAFF_PASSWORD bersamaan.');
   }
   if (staffEmail && staffPassword) {
     if (staffPassword.length < 12 || staffPassword.toLowerCase().includes('replace-with')) {
@@ -149,7 +149,7 @@ async function seed({ fresh = false } = {}) {
       where: { name: source.name },
       defaults: {
         website: source.website,
-        notes: 'Supplier reference from product source; contact details have not been verified.',
+        notes: 'Referensi dari sumber produk; kontak supplier belum diverifikasi.',
         is_active: true,
       },
     });
