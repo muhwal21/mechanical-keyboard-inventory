@@ -22,7 +22,7 @@ This project can retain a product image, source listing, and listing status as r
 - [Quantara inventory dashboard](https://dribbble.com/shots/26722810-Quantara-Dashboard-Inventory-Management) emphasizes stock visibility: summary metrics, stock-level analysis, item/location details, reorder information, and recent inventory activity. These patterns fit the dashboard and stock history.
 - [Store Inventory Dashboard](https://dribbble.com/shots/25005705-Store-Inventory-Dashboard) mixes stock levels with per-item sales statistics, product edits, and ad promotion actions. The useful parts for this project are the compact stock view and direct product editing. The advertising and customer-sales elements are outside this inventory MVP.
 
-The implementation follows the references' clear summary cards, compact operational tables, and activity history. The interface uses a black-and-white grayscale palette with persistent light and dark modes; source product photos retain their original colors. A small seven-day chart counts real stock-log entries, while category mix and low-stock items stay simple for a single stockroom. Its product page is a stock table, not a customer-facing product grid.
+The implementation follows the references' clear summary cards, compact operational tables, and activity history. The interface uses grayscale surfaces with blue, yellow, and red accents for actions and stock states. Light and dark mode selections persist; source product photos retain their original colors. A small seven-day chart counts real stock-log entries, while category mix and low-stock items stay simple for a single stockroom. Its product page is a stock table, not a customer-facing product grid.
 
 ## Product data
 
