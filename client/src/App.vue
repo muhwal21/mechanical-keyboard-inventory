@@ -80,10 +80,10 @@ const pageTitle = computed(() => ({
 }[activePage.value]));
 
 const navItems = [
-  { id: 'overview', label: 'Ringkasan', icon: LayoutDashboard },
-  { id: 'products', label: 'Produk', icon: Package },
-  { id: 'suppliers', label: 'Supplier', icon: Truck },
-  { id: 'movements', label: 'Pergerakan stok', icon: ArrowDownUp },
+  { id: 'overview', label: 'Ringkasan', short: 'Ringkasan', icon: LayoutDashboard },
+  { id: 'products', label: 'Produk', short: 'Produk', icon: Package },
+  { id: 'suppliers', label: 'Supplier', short: 'Supplier', icon: Truck },
+  { id: 'movements', label: 'Pergerakan stok', short: 'Stok', icon: ArrowDownUp },
 ];
 
 const today = new Intl.DateTimeFormat('id-ID', {
@@ -400,10 +400,10 @@ async function confirmPendingAction() {
   }
 }
 
-function openMovement(product = null) {
+function openMovement(product = null, type = 'IN') {
   Object.assign(movementForm, {
     product_id: product?.id ?? products.value[0]?.id ?? '',
-    movement_type: 'IN', quantity: '', note: '',
+    movement_type: type, quantity: '', note: '',
   });
   movementModalOpen.value = true;
 }
@@ -453,8 +453,8 @@ function formatNumber(value) {
   return new Intl.NumberFormat('id-ID').format(Number(value ?? 0));
 }
 
-function formatMoney(value, currency = 'IDR') {
-  if (value == null || value === '') return 'Belum diisi';
+function formatMoney(value, currency = 'IDR', emptyText = 'Belum diisi') {
+  if (value == null || value === '') return emptyText;
   try {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency', currency: currency || 'IDR', maximumFractionDigits: 0,
@@ -475,6 +475,14 @@ function formatReferencePrice(product) {
 
 function movementLabel(type) {
   return { IN: 'Stok masuk', OUT: 'Stok keluar', ADJUSTMENT: 'Penyesuaian' }[type] ?? type;
+}
+
+function movementSign(type) {
+  return { IN: '+', OUT: '−', ADJUSTMENT: '↔' }[type] ?? '';
+}
+
+function movementTone(type) {
+  return { IN: 'positive-value', OUT: 'negative-value' }[type] ?? '';
 }
 
 function movementIcon(type) {
@@ -590,9 +598,10 @@ onMounted(async () => {
 
       <div class="side-label">WORKSPACE</div>
       <nav class="side-nav" aria-label="Navigasi inventaris">
-        <button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ active: activePage === item.id }" @click="navigate(item.id)">
+        <button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ active: activePage === item.id }" :aria-current="activePage === item.id ? 'page' : undefined" @click="navigate(item.id)">
           <component :is="item.icon" :size="18" :stroke-width="1.8" />
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-short">{{ item.short }}</span>
           <span v-if="item.id === 'products'" class="nav-count">{{ dashboard.summary?.activeProducts ?? products.length }}</span>
           <span v-if="item.id === 'suppliers'" class="nav-count">{{ suppliers.filter((supplier) => supplier.is_active).length }}</span>
         </button>
@@ -613,8 +622,9 @@ onMounted(async () => {
 
     <main class="main-area">
       <header class="topbar">
+        <a class="topbar-brand" href="#" aria-label="KeyStock — ringkasan" @click.prevent="navigate('overview')"><span class="brand-mark"><Keyboard :size="17" /></span><strong>KEYSTOCK</strong></a>
         <div class="breadcrumb"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ pageTitle }}</strong></div>
-        <div class="top-actions"><button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" /><span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span></button><span class="today-label">{{ today }}</span><span class="top-divider"></span><div class="top-user"><div class="avatar small-avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div><span>{{ user.name }}</span></div></div>
+        <div class="top-actions"><button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" /><span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span></button><span class="today-label">{{ today }}</span><span class="top-divider"></span><div class="top-user"><div class="avatar small-avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div><span>{{ user.name }}</span></div><button class="icon-button subtle mobile-logout" title="Keluar" aria-label="Keluar" :disabled="busy" @click="logout"><LogOut :size="16" /></button></div>
       </header>
 
       <div class="content-wrap">
@@ -630,7 +640,7 @@ onMounted(async () => {
           <section class="metric-grid">
             <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-blue"><Package :size="18" /></span><span class="metric-caption">Jenis produk aktif</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.activeProducts) }}</div><div class="metric-foot">SKU tersimpan di katalog inventaris</div></article>
             <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-green"><Boxes :size="18" /></span><span class="metric-caption">Jumlah stok fisik</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.totalStock) }} <small>unit</small></div><div class="metric-foot">Saldo stok demo, dicatat lewat log</div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-violet"><CircleDollarSign :size="18" /></span><span class="metric-caption">Nilai modal tercatat</span></div><div class="metric-value compact-value">{{ formatMoney(dashboard.summary?.inventoryCost) }}</div><div class="metric-foot">{{ formatNumber(dashboard.summary?.pricedPurchaseProducts) }} SKU dengan harga beli</div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-violet"><CircleDollarSign :size="18" /></span><span class="metric-caption">Nilai modal tercatat</span></div><div class="metric-value compact-value" :class="{ 'is-empty': dashboard.summary?.inventoryCost == null }">{{ formatMoney(dashboard.summary?.inventoryCost, 'IDR', '—') }}</div><div class="metric-foot">{{ dashboard.summary?.pricedPurchaseProducts ? `${formatNumber(dashboard.summary.pricedPurchaseProducts)} SKU dengan harga beli` : 'Isi harga beli produk untuk menghitung' }}</div></article>
             <article class="metric-card alert-metric"><div class="metric-top"><span class="metric-icon icon-amber"><AlertTriangle :size="18" /></span><span class="metric-caption">Perlu perhatian</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.lowStockCount) }}</div><div class="metric-foot"><span>{{ formatNumber(dashboard.summary?.outOfStockCount) }} produk habis</span><button class="text-link" @click="showLowStock">Tinjau <span>↗</span></button></div></article>
           </section>
 
@@ -660,8 +670,8 @@ onMounted(async () => {
             <article>
               <div class="panel-heading"><div><div class="panel-kicker">STOCK CONTROL</div><h2>Perlu restock</h2><p>Produk yang menyentuh atau melewati batas minimum.</p></div><button class="link-button" @click="showLowStock">Semua perhatian <span>↗</span></button></div>
               <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat stok...</div>
-              <div v-else-if="dashboard.lowStockProducts?.length" class="attention-table-wrap"><table class="data-table attention-table"><thead><tr><th>PRODUK</th><th>SUPPLIER</th><th>LOKASI</th><th>SISA / MINIMUM</th><th></th></tr></thead><tbody>
-                <tr v-for="product in dashboard.lowStockProducts" :key="product.id"><td><div class="product-cell compact-product"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.sku }}</small></div></div></td><td>{{ product.supplier?.name ?? 'Belum dipilih' }}</td><td>{{ product.storage_location || '—' }}</td><td><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>/ {{ formatNumber(product.reorder_point) }}</small></span></td><td><button class="icon-button subtle" title="Catat stok masuk" aria-label="Catat stok masuk" @click="openMovement(product)"><Plus :size="17" /></button></td></tr>
+              <div v-else-if="dashboard.lowStockProducts?.length" class="attention-table-wrap"><table class="data-table attention-table stack-table"><thead><tr><th>PRODUK</th><th>SUPPLIER</th><th>LOKASI</th><th>SISA / MINIMUM</th><th></th></tr></thead><tbody>
+                <tr v-for="product in dashboard.lowStockProducts" :key="product.id"><td class="cell-primary"><div class="product-cell compact-product"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.sku }}</small></div></div></td><td data-label="Supplier">{{ product.supplier?.name ?? 'Belum dipilih' }}</td><td data-label="Lokasi">{{ product.storage_location || '—' }}</td><td data-label="Sisa / minimum"><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>/ {{ formatNumber(product.reorder_point) }}</small></span></td><td class="cell-actions"><button class="icon-button subtle" title="Catat stok masuk" aria-label="Catat stok masuk" @click="openMovement(product, 'IN')"><Plus :size="17" /></button></td></tr>
               </tbody></table></div>
               <div v-else class="empty-state compact-empty"><div class="empty-icon"><Check :size="21" /></div><strong>Belum ada stok di bawah minimum</strong><span>Daftar ini akan menampilkan produk saat jumlahnya perlu diisi ulang.</span></div>
             </article>
@@ -669,8 +679,8 @@ onMounted(async () => {
 
           <section class="panel recent-panel">
             <div class="panel-heading"><div><div class="panel-kicker">MOVEMENT LOG</div><h2>Pergerakan stok terbaru</h2><p>Setiap perubahan saldo tersimpan bersama pengguna dan waktunya.</p></div><button class="link-button" @click="navigate('movements')">Buka riwayat <span>↗</span></button></div>
-            <div v-if="dashboard.recentMovements?.length" class="table-scroll"><table class="data-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>PERUBAHAN</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
-              <tr v-for="item in dashboard.recentMovements" :key="item.id"><td><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td><strong :class="item.movement_type === 'OUT' ? 'negative-value' : item.movement_type === 'IN' ? 'positive-value' : ''">{{ item.movement_type === 'OUT' ? '−' : item.movement_type === 'IN' ? '+' : '↔' }}{{ formatNumber(item.quantity) }} unit</strong><small class="cell-subtext">{{ formatNumber(item.stock_before) }} → {{ formatNumber(item.stock_after) }}</small></td><td>{{ item.user?.name }}</td><td>{{ formatDate(item.createdAt ?? item.created_at) }}</td><td class="note-cell">{{ item.note || '—' }}</td></tr>
+            <div v-if="dashboard.recentMovements?.length" class="table-scroll"><table class="data-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>PERUBAHAN</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
+              <tr v-for="item in dashboard.recentMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Perubahan"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }} unit</strong><small class="cell-subtext">{{ formatNumber(item.stock_before) }} → {{ formatNumber(item.stock_after) }}</small></td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
             <div v-else class="empty-state compact-empty"><div class="empty-icon"><History :size="21" /></div><strong>Belum ada catatan pergerakan</strong><span>Gunakan aksi stok masuk, stok keluar, atau penyesuaian.</span></div>
           </section>
@@ -694,8 +704,16 @@ onMounted(async () => {
               <select v-model="stockFilter" class="filter-select stock-filter" aria-label="Filter kondisi stok" @change="applyProductFilters"><option value="all">Semua stok</option><option value="low">Perlu restock</option></select>
             </div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat produk...</div>
-            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table"><thead><tr><th>PRODUK</th><th>SUPPLIER / KONTAK</th><th>HARGA BELI / JUAL</th><th>STOK</th><th>LOKASI</th><th>KONDISI</th><th>AKSI</th></tr></thead><tbody>
-              <tr v-for="product in filteredProducts" :key="product.id"><td><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td><td><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td><td class="money-pair-cell"><div><span>Beli</span><strong>{{ formatMoney(product.purchase_price, product.currency) }}</strong></div><div><span>Jual</span><strong>{{ formatMoney(product.selling_price, product.currency) }}</strong></div><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. listing {{ formatReferencePrice(product) }}</small></td><td><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td><td><span class="location-tag">{{ product.storage_location || '—' }}</span></td><td><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td><td><div class="row-actions"><a v-if="product.source_url" class="icon-button subtle" :href="product.source_url" target="_blank" rel="noopener noreferrer" title="Buka sumber produk" aria-label="Buka sumber produk"><ExternalLink :size="15" /></a><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td></tr>
+            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table stack-table"><thead><tr><th>PRODUK</th><th>SUPPLIER / KONTAK</th><th>HARGA BELI / JUAL</th><th>STOK</th><th>LOKASI</th><th>KONDISI</th><th>AKSI</th></tr></thead><tbody>
+              <tr v-for="product in filteredProducts" :key="product.id">
+                <td class="cell-primary"><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong :title="product.name">{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td>
+                <td data-label="Supplier"><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td>
+                <td data-label="Harga beli / jual" class="money-pair-cell"><div><span>Beli</span><strong :class="{ 'is-empty': product.purchase_price == null }">{{ formatMoney(product.purchase_price, product.currency, '—') }}</strong></div><div><span>Jual</span><strong :class="{ 'is-empty': product.selling_price == null }">{{ formatMoney(product.selling_price, product.currency, '—') }}</strong></div><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. {{ formatReferencePrice(product) }}</small></td>
+                <td data-label="Stok" class="span-2"><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td>
+                <td data-label="Lokasi" class="span-2"><span class="location-tag">{{ product.storage_location || '—' }}</span></td>
+                <td data-label="Kondisi" class="span-2"><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td>
+                <td class="cell-actions"><div class="row-actions"><a v-if="product.source_url" class="icon-button subtle" :href="product.source_url" target="_blank" rel="noopener noreferrer" title="Buka sumber produk" aria-label="Buka sumber produk"><ExternalLink :size="15" /></a><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td>
+              </tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><Package :size="22" /></div><strong>Produk tidak ditemukan</strong><span>Ubah kata pencarian atau filter, lalu coba lagi.</span><button v-if="user.role === 'admin'" class="button secondary small-button" @click="openCreateProduct()"><Plus :size="15" /> Tambah produk pertama</button></div>
             <div class="table-footer"><span>Menampilkan <strong>{{ filteredProducts.length }}</strong> produk</span><span class="table-footer-note"><ShieldCheck :size="14" /> Harga beli tidak diasumsikan dari harga katalog.</span></div>
@@ -726,8 +744,8 @@ onMounted(async () => {
           <section class="panel movement-panel">
             <div class="panel-heading"><div><div class="panel-kicker">STOCK MOVEMENTS</div><h2>Riwayat inventaris</h2><p>{{ movements.length }} catatan terbaru</p></div><div class="audit-tag"><History :size="15" /> Audit trail aktif</div></div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat riwayat...</div>
-            <div v-else-if="movements.length" class="table-scroll"><table class="data-table movement-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>STOK SEBELUM / SESUDAH</th><th>JUMLAH</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
-              <tr v-for="item in movements" :key="item.id"><td><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td><strong :class="item.movement_type === 'OUT' ? 'negative-value' : item.movement_type === 'IN' ? 'positive-value' : ''">{{ item.movement_type === 'OUT' ? '−' : item.movement_type === 'IN' ? '+' : '↔' }}{{ formatNumber(item.quantity) }}</strong> unit</td><td>{{ item.user?.name }}</td><td>{{ formatDate(item.createdAt ?? item.created_at) }}</td><td class="note-cell">{{ item.note || '—' }}</td></tr>
+            <div v-else-if="movements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>STOK SEBELUM / SESUDAH</th><th>JUMLAH</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
+              <tr v-for="item in movements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>Belum ada riwayat</strong><span>Setiap perubahan saldo akan dicatat di halaman ini.</span></div>
           </section>
