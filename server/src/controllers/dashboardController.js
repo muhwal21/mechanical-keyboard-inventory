@@ -1,5 +1,6 @@
 import { Op, literal } from 'sequelize';
 import { Category, Product, StockMovement, Supplier, User } from '../models/index.js';
+import { summarizeMovements } from '../services/financeService.js';
 
 const ACTIVITY_DAYS = 30;
 
@@ -19,7 +20,7 @@ export async function getDashboard(req, res, next) {
 
     const [activeProducts, stockRows, lowStockProducts, categories, recentMovements, activeSuppliers, activityRows] = await Promise.all([
       Product.count({ where: { is_active: true } }),
-      Product.findAll({ attributes: ['warehouse_stock', 'reorder_point', 'purchase_price', 'currency'], where: { is_active: true } }),
+      Product.findAll({ attributes: ['warehouse_stock', 'reorder_point', 'purchase_price', 'selling_price', 'currency'], where: { is_active: true } }),
       Product.findAll({
         where: { is_active: true, [Op.and]: [literal('warehouse_stock <= reorder_point')] },
         include: [
@@ -40,7 +41,7 @@ export async function getDashboard(req, res, next) {
       }),
       Supplier.count({ where: { is_active: true } }),
       StockMovement.findAll({
-        attributes: ['movement_type', 'quantity', 'stock_before', 'stock_after', 'createdAt'],
+        attributes: ['movement_type', 'reason', 'quantity', 'stock_before', 'stock_after', 'unit_cost', 'unit_price', 'currency', 'createdAt'],
         where: { createdAt: { [Op.gte]: activityStart } },
         order: [['createdAt', 'ASC']],
       }),
@@ -60,6 +61,16 @@ export async function getDashboard(req, res, next) {
     const inventoryCost = pricedPurchaseProducts
       ? pricedRows.reduce((sum, product) => sum + Number(product.purchase_price) * product.warehouse_stock, 0)
       : null;
+    const retailRows = stockRows.filter((product) => product.selling_price != null && product.currency === 'IDR');
+    const inventoryRetail = retailRows.length
+      ? retailRows.reduce((sum, product) => sum + Number(product.selling_price) * product.warehouse_stock, 0)
+      : null;
+    // Profit and loss for the last 30 days, rupiah transactions only.
+    const finance = {
+      ...summarizeMovements(activityRows.filter((movement) => movement.currency === 'IDR')),
+      days: ACTIVITY_DAYS,
+      excludedForeignCurrency: activityRows.filter((movement) => movement.currency !== 'IDR' && movement.reason === 'SALE').length,
+    };
 
     // One entry per day for the activity heatmap: number of transactions per type and units moved.
     const activityByDate = new Map();
@@ -86,8 +97,9 @@ export async function getDashboard(req, res, next) {
     return res.json({
       summary: {
         activeProducts, totalStock, lowStockCount, outOfStockCount, inventoryCost,
-        pricedPurchaseProducts, activeSuppliers, weeklyNetChange, stockStats,
+        pricedPurchaseProducts, activeSuppliers, weeklyNetChange, stockStats, inventoryRetail,
       },
+      finance,
       categories,
       lowStockProducts,
       activity,

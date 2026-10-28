@@ -34,9 +34,32 @@ async function migrateProductImages() {
   }
 }
 
+// Movement reasons and price snapshots were added for profit and loss. Older rows get the
+// default reason for their type and the product's current prices.
+async function migrateMovementFinance(queryInterface) {
+  const columns = await queryInterface.describeTable('stock_movements');
+  if (columns.reason) return;
+  await queryInterface.addColumn('stock_movements', 'reason', {
+    type: DataTypes.ENUM('PURCHASE', 'RETURN_IN', 'SALE', 'DAMAGED', 'LOST', 'RETURN_OUT', 'STOCK_COUNT'),
+    allowNull: false,
+    defaultValue: 'STOCK_COUNT',
+  });
+  await queryInterface.addColumn('stock_movements', 'unit_cost', { type: DataTypes.DECIMAL(14, 2), allowNull: true });
+  await queryInterface.addColumn('stock_movements', 'unit_price', { type: DataTypes.DECIMAL(14, 2), allowNull: true });
+  await queryInterface.addColumn('stock_movements', 'currency', { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'IDR' });
+  await sequelize.query(`
+    UPDATE stock_movements m JOIN products p ON p.id = m.product_id
+    SET m.reason = CASE m.movement_type WHEN 'IN' THEN 'PURCHASE' WHEN 'OUT' THEN 'SALE' ELSE 'STOCK_COUNT' END,
+        m.unit_cost = p.purchase_price,
+        m.unit_price = CASE WHEN m.movement_type = 'OUT' THEN p.selling_price ELSE NULL END,
+        m.currency = p.currency
+  `);
+}
+
 export async function migrateInventoryFields() {
   const queryInterface = sequelize.getQueryInterface();
   await migrateUsernames(queryInterface);
+  await migrateMovementFinance(queryInterface);
   const columns = await queryInterface.describeTable('products');
 
   if (!columns.purchase_price) {

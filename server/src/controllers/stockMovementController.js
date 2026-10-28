@@ -9,7 +9,7 @@ export async function listMovements(req, res, next) {
         {
           model: Product,
           as: 'product',
-          attributes: ['id', 'name', 'sku', 'brand', 'storage_location', 'image_url'],
+          attributes: ['id', 'name', 'sku', 'brand', 'storage_location', 'image_url', 'currency'],
           include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
         },
         { model: User, as: 'user', attributes: ['id', 'name'] },
@@ -29,6 +29,7 @@ export async function createMovement(req, res, next) {
       productId: req.body.product_id,
       userId: req.user.id,
       type: req.body.movement_type,
+      reason: req.body.reason,
       quantity: req.body.quantity,
       note: req.body.note,
     });

@@ -7,7 +7,7 @@ export class StockError extends Error {
   }
 }
 
-export async function recordMovement({ productId, userId, type, quantity, note }) {
+export async function recordMovement({ productId, userId, type, reason, quantity, note }) {
   return sequelize.transaction(async (transaction) => {
     const product = await Product.findByPk(productId, {
       transaction,
@@ -31,13 +31,19 @@ export async function recordMovement({ productId, userId, type, quantity, note }
     product.warehouse_stock = stockAfter;
     await product.save({ transaction });
 
+    // Snapshot of the prices at this moment, used later for profit and loss reports.
+    const sellsAtPrice = reason === 'SALE' || reason === 'RETURN_IN';
     const movement = await StockMovement.create({
       product_id: product.id,
       user_id: userId,
       movement_type: type,
+      reason,
       quantity: Math.abs(stockAfter - stockBefore),
       stock_before: stockBefore,
       stock_after: stockAfter,
+      unit_cost: product.purchase_price,
+      unit_price: sellsAtPrice ? product.selling_price : null,
+      currency: product.currency,
       note: note || null,
     }, { transaction });
 

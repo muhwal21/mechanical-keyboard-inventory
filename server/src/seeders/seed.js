@@ -16,7 +16,17 @@ const categoryLabels = {
 // point (6) and one is out of stock, so the restock list and status badges have data.
 const demoStockLevels = [14, 3, 22, 9, 18, 0, 27, 11, 16, 24, 5, 13, 19, 8, 21, 2, 12, 15, 10, 26, 4, 17, 20];
 const restockNotes = ['Restock dari supplier', 'Barang datang dari distributor', 'Pembelian ulang batch baru'];
-const saleNotes = ['Penjualan toko offline', 'Pesanan marketplace dikirim', 'Dipakai untuk unit display'];
+const saleNotes = ['Penjualan toko offline', 'Pesanan marketplace dikirim', 'Penjualan ke pelanggan tetap'];
+
+// Simulated cost ratio per category: purchase price = selling price x ratio.
+const costRatio = { keyboard: 0.75, switch: 0.65, aksesoris: 0.6, keycaps: 0.7, deskmat: 0.62 };
+
+function simulatedPrices(source, isUsd, listingPrice) {
+  if (listingPrice == null) return { purchase: null, selling: null };
+  const ratio = costRatio[source.kategori] ?? 0.7;
+  const purchase = isUsd ? Math.round(listingPrice * ratio * 100) / 100 : Math.round((listingPrice * ratio) / 1000) * 1000;
+  return { purchase, selling: listingPrice };
+}
 
 function daysAgo(days, hour) {
   const date = new Date();
@@ -30,10 +40,16 @@ function daysAgo(days, hour) {
 // stock-in and stock-out entries. Every row stores the balance before and after.
 function demoHistory(index, targetStock) {
   const events = [];
-  if (index % 3 === 0) events.push({ type: 'IN', quantity: 5 + (index % 4), at: daysAgo(index % 7, 10), note: restockNotes[index % 3] });
-  if (index % 2 === 0) events.push({ type: 'OUT', quantity: 2 + (index % 3), at: daysAgo((index + 3) % 7, 15), note: saleNotes[index % 3] });
-  if (index % 5 === 1) events.push({ type: 'OUT', quantity: 1 + (index % 2), at: daysAgo((index + 1) % 7, 13), note: saleNotes[(index + 1) % 3] });
-  if (index % 4 === 2) events.push({ type: 'IN', quantity: 4, at: daysAgo((index + 5) % 7, 9), note: restockNotes[(index + 1) % 3] });
+  if (index % 3 === 0) events.push({ type: 'IN', reason: 'PURCHASE', quantity: 5 + (index % 4), at: daysAgo(index % 7, 10), note: restockNotes[index % 3] });
+  if (index % 2 === 0) {
+    const damaged = index % 7 === 0;
+    events.push({
+      type: 'OUT', reason: damaged ? 'DAMAGED' : 'SALE', quantity: damaged ? 1 : 2 + (index % 3),
+      at: daysAgo((index + 3) % 7, 15), note: damaged ? 'Unit rusak saat pengiriman' : saleNotes[index % 3],
+    });
+  }
+  if (index % 5 === 1) events.push({ type: 'OUT', reason: 'SALE', quantity: 1 + (index % 2), at: daysAgo((index + 1) % 7, 13), note: saleNotes[(index + 1) % 3] });
+  if (index % 4 === 2) events.push({ type: 'IN', reason: 'PURCHASE', quantity: 4, at: daysAgo((index + 5) % 7, 9), note: restockNotes[(index + 1) % 3] });
   events.sort((a, b) => a.at - b.at);
 
   const netChange = events.reduce((sum, event) => sum + (event.type === 'IN' ? event.quantity : -event.quantity), 0);
@@ -64,6 +80,7 @@ function productDefaults(source, categoryId, supplierId, index) {
     ? new URL(source.gambar[0]).pathname.split('.').pop().toLowerCase()
     : null;
   const localImageExtension = ['jpg', 'jpeg', 'png', 'webp'].includes(imageExtension) ? imageExtension : null;
+  const prices = simulatedPrices(source, isUsd, priceMin);
 
   return {
     category_id: categoryId,
@@ -73,8 +90,8 @@ function productDefaults(source, categoryId, supplierId, index) {
     description: source.deskripsi ?? '',
     price_min: priceMin,
     price_max: priceMax,
-    purchase_price: null,
-    selling_price: null,
+    purchase_price: prices.purchase,
+    selling_price: prices.selling,
     currency: isUsd ? 'USD' : 'IDR',
     listing_status: source.status ?? 'Ready',
     warehouse_stock: simulatedStock,
@@ -206,6 +223,9 @@ async function seed({ fresh = false } = {}) {
           quantity: history.opening,
           stock_before: 0,
           stock_after: history.opening,
+          reason: 'STOCK_COUNT',
+          unit_cost: product.purchase_price,
+          currency: product.currency,
           note: 'Stok awal simulasi untuk demo UAS.',
           createdAt: history.openedAt,
         }, { transaction });
@@ -218,9 +238,13 @@ async function seed({ fresh = false } = {}) {
             product_id: product.id,
             user_id: (staffUser && eventIndex % 2 === 0) ? staffUser.id : admin.id,
             movement_type: event.type,
+            reason: event.reason,
             quantity: event.quantity,
             stock_before: before,
             stock_after: balance,
+            unit_cost: product.purchase_price,
+            unit_price: event.reason === 'SALE' ? product.selling_price : null,
+            currency: product.currency,
             note: event.note,
             createdAt: event.at,
           }, { transaction });
@@ -228,14 +252,12 @@ async function seed({ fresh = false } = {}) {
         // Keep the product balance equal to the last movement.
         if (balance !== product.warehouse_stock) await product.update({ warehouse_stock: balance }, { transaction });
       } else {
+        // Re-seeding fills missing values only; anything an admin already entered is kept.
         const defaults = productDefaults(source, categoryId, supplierId, index);
-        const sourcePriceWasUsedAsSellingPrice = product.selling_price != null
-          && defaults.price_min != null
-          && Number(product.selling_price) === Number(defaults.price_min);
         await product.update({
           supplier_id: product.supplier_id ?? defaults.supplier_id,
           purchase_price: product.purchase_price ?? defaults.purchase_price,
-          selling_price: sourcePriceWasUsedAsSellingPrice ? null : product.selling_price,
+          selling_price: product.selling_price ?? defaults.selling_price,
           storage_location: product.storage_location || defaults.storage_location,
         }, { transaction });
       }

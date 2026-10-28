@@ -1,6 +1,7 @@
 import { Op, literal } from 'sequelize';
 import { Category, Product, ProductImage, StockMovement, Supplier, User } from '../models/index.js';
 import { serializeImage } from './productImageController.js';
+import { summarizeMovements } from '../services/financeService.js';
 
 const productIncludes = [
   { model: Category, as: 'category', attributes: ['id', 'name', 'slug'] },
@@ -97,9 +98,15 @@ export async function getProduct(req, res, next) {
       order: [['created_at', 'DESC'], ['id', 'DESC']],
       limit: 8,
     });
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const recent = await StockMovement.findAll({
+      attributes: ['reason', 'quantity', 'unit_cost', 'unit_price'],
+      where: { product_id: product.id, createdAt: { [Op.gte]: since } },
+    });
     const data = product.toJSON();
     data.images = product.images.map(serializeImage);
-    return res.json({ product: data, movements });
+    return res.json({ product: data, movements, stats: { ...summarizeMovements(recent), days: 30 } });
   } catch (error) {
     return next(error);
   }

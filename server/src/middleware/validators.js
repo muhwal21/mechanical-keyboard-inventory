@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALL_REASONS, MOVEMENT_REASONS } from '../constants.js';
 
 // Defense in depth against XSS: Vue already escapes text on render, but the API also
 // refuses to store HTML markup. Tags are removed and stray angle brackets dropped.
@@ -106,7 +107,10 @@ export const movementSchema = z.object({
   product_id: z.coerce.number().int().positive('Pilih produk.'),
   movement_type: z.enum(['IN', 'OUT', 'ADJUSTMENT']),
   quantity: z.coerce.number().int('Jumlah harus bilangan bulat.').nonnegative('Jumlah tidak boleh negatif.').max(1000000),
+  reason: z.enum(ALL_REASONS).optional(),
   note: plainText({ max: 500, label: 'Catatan' }).optional().default(''),
 }).refine((data) => data.movement_type === 'ADJUSTMENT' || data.quantity > 0, {
   path: ['quantity'], message: 'Jumlah harus lebih dari nol.',
-});
+}).refine((data) => !data.reason || MOVEMENT_REASONS[data.movement_type].includes(data.reason), {
+  path: ['reason'], message: 'Alasan tidak sesuai dengan jenis pergerakan.',
+}).transform((data) => ({ ...data, reason: data.reason ?? MOVEMENT_REASONS[data.movement_type][0] }));

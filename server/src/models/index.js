@@ -71,6 +71,10 @@ export const StockMovement = sequelize.define('StockMovement', {
   quantity: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
   stock_before: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
   stock_after: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  reason: { type: DataTypes.ENUM('PURCHASE', 'RETURN_IN', 'SALE', 'DAMAGED', 'LOST', 'RETURN_OUT', 'STOCK_COUNT'), allowNull: false, defaultValue: 'STOCK_COUNT' },
+  unit_cost: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  unit_price: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'IDR' },
   note: { type: DataTypes.STRING(500), allowNull: true },
 }, { tableName: 'stock_movements', updatedAt: false, indexes: [{ fields: ['product_id', 'created_at'] }, { fields: ['user_id', 'created_at'] }] });
 
