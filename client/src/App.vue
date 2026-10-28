@@ -1,10 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watchEffect } from 'vue';
 import {
-  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, ArrowUpRight, Boxes, Building2,
-  Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, History, Keyboard,
-  LayoutDashboard, LogOut, Mail, MapPin, Moon, Package, PackageX, Phone, Plus, RefreshCw, Search,
-  Settings, ShieldCheck, Sun, TrendingDown, TrendingUp, Truck, UserCheck, UserX, Users, X,
+  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowRight, ArrowUpFromLine, ArrowUpRight, Boxes,
+  Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Eye, EyeOff,
+  History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, Moon, Package, PackageX,
+  Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun, TrendingDown, TrendingUp, Truck,
+  User, UserCheck, UserPlus, UserX, Users, X,
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 import ActivityHeatmap from './components/ActivityHeatmap.vue';
@@ -76,6 +77,7 @@ const formError = ref('');
 const fieldErrors = ref({});
 
 const authMode = ref('login'); // 'login' or 'register'
+const showPassword = ref(false);
 const loginForm = reactive({ email: '', password: '' });
 const registerForm = reactive({ name: '', email: '', password: '', password_confirmation: '' });
 const productForm = reactive({
@@ -163,6 +165,16 @@ const filteredMovements = computed(() => {
     return [item.product?.name, item.product?.sku, item.product?.brand, item.user?.name, item.note]
       .some((value) => value?.toLowerCase().includes(term));
   });
+});
+
+// Live checklist under the register password field; mirrors registerSchema on the server.
+const passwordChecks = computed(() => {
+  const value = registerForm.password;
+  return [
+    { label: 'Minimal 8 karakter', ok: value.length >= 8 },
+    { label: 'Ada huruf', ok: /[A-Za-z]/.test(value) },
+    { label: 'Ada angka', ok: /[0-9]/.test(value) },
+  ];
 });
 
 const overviewProduct = computed(() => (
@@ -396,6 +408,7 @@ async function submitLogin() {
 
 function switchAuthMode(mode) {
   authMode.value = mode;
+  showPassword.value = false;
   clearNotices();
   clearFormErrors();
 }
@@ -794,65 +807,85 @@ onMounted(async () => {
   </div>
 
   <div v-else-if="!user" class="auth-page">
-    <section class="auth-panel">
-      <div class="auth-topline">
-        <a class="brand auth-brand" href="#">
-          <span class="brand-mark"><Keyboard :size="21" /></span>
-          <span><strong>KEYSTOCK</strong><small>INVENTORY WORKSPACE</small></span>
-        </a>
-        <button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme">
-          <Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" />
-          <span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span>
-        </button>
-      </div>
-      <div class="auth-content">
-        <div class="eyebrow"><span class="eyebrow-dot"></span> MECHANICAL KEYBOARD STOCKROOM</div>
-        <h1 v-if="authMode === 'login'">Kelola stok<br />dengan jelas.</h1>
-        <h1 v-else>Buat akun<br />staff gudang.</h1>
-        <p>{{ authMode === 'login' ? 'Pantau produk, harga, supplier, dan pergerakan stok dari satu tempat.' : 'Akun baru berperan sebagai staff. Admin dapat mengubah peran dari halaman Pengguna.' }}</p>
+    <header class="auth-topbar">
+      <span class="brand"><span class="brand-mark"><Keyboard :size="18" /></span><strong>KeyStock</strong></span>
+      <button class="round-button" type="button" :title="themeMode === 'dark' ? 'Mode terang' : 'Mode gelap'" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="17" /><Moon v-else :size="17" /></button>
+    </header>
+
+    <main class="auth-main">
+      <section class="auth-card" aria-labelledby="auth-title">
+        <div class="auth-card-head">
+          <span class="auth-icon"><component :is="authMode === 'login' ? LogIn : UserPlus" :size="22" /></span>
+          <span class="auth-kicker"><span class="eyebrow-dot"></span> Inventaris gudang keyboard</span>
+          <h1 id="auth-title">{{ authMode === 'login' ? 'Masuk ke KeyStock' : 'Buat akun staff' }}</h1>
+          <p>{{ authMode === 'login' ? 'Pantau produk, supplier, dan pergerakan stok dari satu tempat.' : 'Akun baru berperan sebagai staff. Admin dapat mengubah peran dari halaman Pengguna.' }}</p>
+        </div>
+
         <div class="auth-tabs" role="tablist" aria-label="Pilih masuk atau daftar">
           <button type="button" role="tab" :aria-selected="authMode === 'login'" :class="{ active: authMode === 'login' }" @click="switchAuthMode('login')">Masuk</button>
           <button type="button" role="tab" :aria-selected="authMode === 'register'" :class="{ active: authMode === 'register' }" @click="switchAuthMode('register')">Daftar akun</button>
         </div>
+
         <div v-if="errorMessage" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ errorMessage }}</div>
-        <form v-if="authMode === 'login'" class="login-form" @submit.prevent="submitLogin">
-          <label for="email">Email</label>
-          <input id="email" v-model="loginForm.email" type="email" autocomplete="username" placeholder="nama@email.com" required />
-          <label for="password">Kata sandi</label>
-          <input id="password" v-model="loginForm.password" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required />
-          <button class="button primary full" type="submit" :disabled="busy">
+
+        <form v-if="authMode === 'login'" class="auth-form" @submit.prevent="submitLogin">
+          <div class="auth-field">
+            <label for="email">Email</label>
+            <div class="input-wrap"><Mail :size="17" /><input id="email" v-model="loginForm.email" type="email" autocomplete="username" placeholder="nama@email.com" required /></div>
+          </div>
+          <div class="auth-field">
+            <label for="password">Kata sandi</label>
+            <div class="input-wrap"><Lock :size="17" /><input id="password" v-model="loginForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Masukkan kata sandi" required /><button class="reveal-button" type="button" :aria-label="showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'" :aria-pressed="showPassword" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div>
+          </div>
+          <button class="button primary full auth-submit" type="submit" :disabled="busy">
+            <span class="spinner small-spinner" v-if="busy"></span>
             {{ busy ? 'Memeriksa...' : 'Masuk ke inventaris' }}
-            <ChevronDown class="button-arrow" :size="17" />
+            <ArrowRight v-if="!busy" :size="17" />
           </button>
         </form>
-        <form v-else class="login-form" novalidate @submit.prevent="submitRegister">
-          <label for="register-name">Nama lengkap</label>
-          <input id="register-name" v-model="registerForm.name" :class="{ invalid: fieldErrors.name }" autocomplete="name" maxlength="120" placeholder="Nama Anda" required />
-          <small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small>
-          <label for="register-email">Email</label>
-          <input id="register-email" v-model="registerForm.email" :class="{ invalid: fieldErrors.email }" type="email" autocomplete="email" maxlength="190" placeholder="nama@email.com" required />
-          <small v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</small>
-          <label for="register-password">Kata sandi</label>
-          <input id="register-password" v-model="registerForm.password" :class="{ invalid: fieldErrors.password }" type="password" autocomplete="new-password" minlength="8" placeholder="Minimal 8 karakter, huruf dan angka" required />
-          <small v-if="fieldErrors.password" class="field-error">{{ fieldErrors.password }}</small>
-          <label for="register-confirmation">Ulangi kata sandi</label>
-          <input id="register-confirmation" v-model="registerForm.password_confirmation" :class="{ invalid: fieldErrors.password_confirmation }" type="password" autocomplete="new-password" placeholder="Ketik ulang kata sandi" required />
-          <small v-if="fieldErrors.password_confirmation" class="field-error">{{ fieldErrors.password_confirmation }}</small>
-          <button class="button primary full" type="submit" :disabled="busy">
+
+        <form v-else class="auth-form" novalidate @submit.prevent="submitRegister">
+          <div class="auth-field">
+            <label for="register-name">Nama lengkap</label>
+            <div class="input-wrap" :class="{ invalid: fieldErrors.name }"><User :size="17" /><input id="register-name" v-model="registerForm.name" autocomplete="name" maxlength="120" placeholder="Nama Anda" required /></div>
+            <small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small>
+          </div>
+          <div class="auth-field">
+            <label for="register-email">Email</label>
+            <div class="input-wrap" :class="{ invalid: fieldErrors.email }"><Mail :size="17" /><input id="register-email" v-model="registerForm.email" type="email" autocomplete="email" maxlength="190" placeholder="nama@email.com" required /></div>
+            <small v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</small>
+          </div>
+          <div class="auth-field">
+            <label for="register-password">Kata sandi</label>
+            <div class="input-wrap" :class="{ invalid: fieldErrors.password }"><Lock :size="17" /><input id="register-password" v-model="registerForm.password" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" minlength="8" placeholder="Buat kata sandi" required /><button class="reveal-button" type="button" :aria-label="showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'" :aria-pressed="showPassword" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></div>
+            <ul class="password-checks" aria-label="Syarat kata sandi">
+              <li v-for="rule in passwordChecks" :key="rule.label" :class="{ ok: rule.ok }"><Check :size="13" />{{ rule.label }}</li>
+            </ul>
+            <small v-if="fieldErrors.password" class="field-error">{{ fieldErrors.password }}</small>
+          </div>
+          <div class="auth-field">
+            <label for="register-confirmation">Ulangi kata sandi</label>
+            <div class="input-wrap" :class="{ invalid: fieldErrors.password_confirmation }"><Lock :size="17" /><input id="register-confirmation" v-model="registerForm.password_confirmation" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="Ketik ulang kata sandi" required /></div>
+            <small v-if="fieldErrors.password_confirmation" class="field-error">{{ fieldErrors.password_confirmation }}</small>
+          </div>
+          <button class="button primary full auth-submit" type="submit" :disabled="busy">
+            <span class="spinner small-spinner" v-if="busy"></span>
             {{ busy ? 'Membuat akun...' : 'Buat akun staff' }}
-            <ChevronDown class="button-arrow" :size="17" />
+            <ArrowRight v-if="!busy" :size="17" />
           </button>
         </form>
-        <p class="auth-footnote"><ShieldCheck :size="15" /> Sesi login dilindungi dan tersimpan di server.</p>
-      </div>
-      <div class="auth-footer">© 2026 KeyStock · Demo inventaris akademik</div>
-    </section>
-    <section class="auth-art" aria-label="Ilustrasi mechanical keyboard">
-      <div class="art-topline"><span>KEYSTOCK / STOCKROOM</span><span>MECHANICAL · ACCESSORIES</span></div>
-      <div class="art-caption"><span class="art-kicker">PARTS IN PLACE</span><h2>Know what<br />you have.</h2><p>Informasi brand, supplier, harga, lokasi, dan jumlah stok tertata untuk kebutuhan operasional.</p></div>
-      <div class="keyboard-art" aria-hidden="true"><img src="/keyboard-placeholder.svg" alt="" /></div>
-      <div class="art-bottomline"><span>PRODUCT · SUPPLIER · STOCK MOVEMENT</span><span>01 / 04</span></div>
-    </section>
+
+        <p class="auth-footnote"><ShieldCheck :size="15" /> Sesi tersimpan di server dan dilindungi token CSRF.</p>
+      </section>
+
+      <ul class="auth-points">
+        <li><Boxes :size="16" /> Stok real-time</li>
+        <li><History :size="16" /> Riwayat tercatat</li>
+        <li><Users :size="16" /> Akses admin &amp; staff</li>
+      </ul>
+    </main>
+
+    <footer class="auth-footer">© 2026 KeyStock · Demo inventaris akademik</footer>
   </div>
 
   <div v-else class="app-shell">
