@@ -7,7 +7,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "db:sync": "node src/db/sync.js",
-    "db:seed": "node src/seeders/seed.js"
+    "db:seed": "node src/seeders/seed.js",
+    "db:fresh": "node src/seeders/seed.js --fresh"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
