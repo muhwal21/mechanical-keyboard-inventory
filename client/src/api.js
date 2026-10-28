@@ -24,7 +24,13 @@ export async function apiRequest(path, options = {}) {
 
   if (response.status === 204) return null;
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message ?? 'Permintaan gagal.');
+  if (!response.ok) {
+    const error = new Error(payload.message ?? 'Permintaan gagal.');
+    error.status = response.status;
+    // Field-level messages from the server validator, e.g. { sku: 'SKU sudah digunakan.' }
+    error.fields = Object.fromEntries((payload.errors ?? []).map((issue) => [issue.field, issue.message]));
+    throw error;
+  }
   return payload;
 }
 

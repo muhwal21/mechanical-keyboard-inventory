@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import {
   AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, Boxes, Building2,
   Check, ChevronDown, CircleDollarSign, ExternalLink, History, Keyboard,
@@ -59,6 +59,9 @@ const movementModalOpen = ref(false);
 const pendingConfirmation = ref(null);
 const editingProduct = ref(null);
 const editingSupplier = ref(null);
+// Validation feedback shown inside the open dialog (page notices sit behind the backdrop).
+const formError = ref('');
+const fieldErrors = ref({});
 
 const loginForm = reactive({ email: '', password: '' });
 const productForm = reactive({
@@ -116,6 +119,23 @@ function showSuccess(message) {
 function handleError(error) {
   errorMessage.value = error.message || 'Terjadi kesalahan. Coba lagi.';
   successMessage.value = '';
+}
+
+function clearFormErrors() {
+  formError.value = '';
+  fieldErrors.value = {};
+}
+
+async function handleFormError(error) {
+  formError.value = error.message || 'Data belum bisa disimpan. Coba lagi.';
+  fieldErrors.value = error.fields ?? {};
+  // Bring the first invalid field (or the summary notice) into view inside the dialog.
+  await nextTick();
+  document.querySelector('.modal-body .invalid, .modal-body .error-notice')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function toFormNumber(value) {
+  return value == null || value === '' ? '' : Number(value);
 }
 
 async function refreshCsrf() {
@@ -238,12 +258,14 @@ function resetProductForm() {
 }
 
 function openCreateProduct() {
+  clearFormErrors();
   editingProduct.value = null;
   resetProductForm();
   productModalOpen.value = true;
 }
 
 function openEditProduct(product) {
+  clearFormErrors();
   editingProduct.value = product;
   Object.assign(productForm, {
     sku: product.sku,
@@ -252,10 +274,10 @@ function openEditProduct(product) {
     category_id: String(product.category_id),
     supplier_id: product.supplier_id ? String(product.supplier_id) : '',
     description: product.description ?? '',
-    price_min: product.price_min ?? '',
-    price_max: product.price_max ?? '',
-    purchase_price: product.purchase_price ?? '',
-    selling_price: product.selling_price ?? '',
+    price_min: toFormNumber(product.price_min),
+    price_max: toFormNumber(product.price_max),
+    purchase_price: toFormNumber(product.purchase_price),
+    selling_price: toFormNumber(product.selling_price),
     currency: product.currency ?? 'IDR',
     listing_status: product.listing_status ?? 'Ready',
     reorder_point: product.reorder_point,
@@ -286,6 +308,7 @@ function productPayload() {
 async function saveProduct() {
   busy.value = true;
   clearNotices();
+  clearFormErrors();
   try {
     if (editingProduct.value) {
       await put(`/products/${editingProduct.value.id}`, productPayload());
@@ -298,7 +321,7 @@ async function saveProduct() {
     await loadAll({ clear: false });
     activePage.value = 'products';
   } catch (error) {
-    handleError(error);
+    handleFormError(error);
   } finally {
     busy.value = false;
   }
@@ -324,12 +347,14 @@ function resetSupplierForm() {
 }
 
 function openCreateSupplier() {
+  clearFormErrors();
   editingSupplier.value = null;
   resetSupplierForm();
   supplierModalOpen.value = true;
 }
 
 function openEditSupplier(supplier) {
+  clearFormErrors();
   editingSupplier.value = supplier;
   Object.assign(supplierForm, {
     name: supplier.name,
@@ -347,6 +372,7 @@ function openEditSupplier(supplier) {
 async function saveSupplier() {
   busy.value = true;
   clearNotices();
+  clearFormErrors();
   try {
     if (editingSupplier.value) {
       await put(`/suppliers/${editingSupplier.value.id}`, supplierForm);
@@ -359,7 +385,7 @@ async function saveSupplier() {
     await loadAll({ clear: false });
     activePage.value = 'suppliers';
   } catch (error) {
-    handleError(error);
+    handleFormError(error);
   } finally {
     busy.value = false;
   }
@@ -401,6 +427,7 @@ async function confirmPendingAction() {
 }
 
 function openMovement(product = null, type = 'IN') {
+  clearFormErrors();
   Object.assign(movementForm, {
     product_id: product?.id ?? products.value[0]?.id ?? '',
     movement_type: type, quantity: '', note: '',
@@ -411,6 +438,7 @@ function openMovement(product = null, type = 'IN') {
 async function saveMovement() {
   busy.value = true;
   clearNotices();
+  clearFormErrors();
   try {
     const movementType = movementForm.movement_type;
     await post('/stock-movements', {
@@ -424,7 +452,7 @@ async function saveMovement() {
     await loadAll({ clear: false });
     activePage.value = 'movements';
   } catch (error) {
-    handleError(error);
+    handleFormError(error);
   } finally {
     busy.value = false;
   }
@@ -756,28 +784,54 @@ onMounted(async () => {
     </main>
 
     <div v-if="productModalOpen" class="modal-backdrop" @click.self="productModalOpen = false">
-      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
-        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">PRODUCT REGISTER</div><h2 id="product-modal-title">{{ editingProduct ? 'Edit produk' : 'Tambah produk' }}</h2></div><button class="icon-button subtle" title="Tutup" aria-label="Tutup" @click="productModalOpen = false"><X :size="18" /></button></header>
+      <section class="modal-card product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
+        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">PRODUCT REGISTER</div><h2 id="product-modal-title">{{ editingProduct ? 'Edit produk' : 'Tambah produk' }}</h2></div><button class="icon-button subtle" type="button" title="Tutup" aria-label="Tutup" @click="productModalOpen = false"><X :size="18" /></button></header>
         <form class="modal-form" @submit.prevent="saveProduct">
-          <div class="form-grid">
-            <label>Nama produk<input v-model="productForm.name" required maxlength="190" placeholder="Contoh: Gateron Milky Yellow Pro" /></label>
-            <label>SKU<input v-model="productForm.sku" required maxlength="100" pattern="[A-Za-z0-9._-]+" placeholder="gateron-milky-yellow-pro" /></label>
-            <label>Brand / pembuat<input v-model="productForm.brand" required maxlength="120" placeholder="Contoh: Gateron" /></label>
-            <label>Kategori<select v-model="productForm.category_id" required><option value="" disabled>Pilih kategori</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label>
-            <label>Supplier<select v-model="productForm.supplier_id"><option value="">Belum ditentukan</option><option v-for="supplier in suppliers" :key="supplier.id" :value="String(supplier.id)">{{ supplier.name }}{{ supplier.is_active ? '' : ' (arsip)' }}</option></select></label>
-            <label>Lokasi rak<input v-model="productForm.storage_location" maxlength="80" placeholder="Contoh: A-01 / Drawer 2" /></label>
-            <label>Harga beli<input v-model="productForm.purchase_price" type="number" min="0" step="1" placeholder="Belum dicatat" /></label>
-            <label>Harga jual<input v-model="productForm.selling_price" type="number" min="0" step="1" placeholder="Belum ditentukan" /></label>
-            <label>Mata uang<select v-model="productForm.currency"><option value="IDR">IDR — Rupiah</option><option value="USD">USD — Dollar</option></select></label>
-            <label>Batas minimum stok<input v-model="productForm.reorder_point" type="number" min="0" step="1" required /></label>
-            <label>Status sumber listing<input v-model="productForm.listing_status" maxlength="120" placeholder="Referensi saja" /></label>
-            <label>Harga referensi terendah<input v-model="productForm.price_min" type="number" min="0" step="1" placeholder="Opsional" /></label>
-            <label>Harga referensi tertinggi<input v-model="productForm.price_max" type="number" min="0" step="1" placeholder="Opsional" /></label>
-            <label class="full-field">Deskripsi / spesifikasi<textarea v-model="productForm.description" rows="3" maxlength="5000" placeholder="Layout, tipe switch, koneksi, atau detail lain"></textarea></label>
-            <label class="full-field">URL sumber produk<input v-model="productForm.source_url" type="url" placeholder="https://..." /></label>
-            <label class="full-field">URL gambar atau path lokal<input v-model="productForm.image_url" type="text" placeholder="https://... atau /images/nama-produk.jpg" /></label>
+          <div class="modal-body">
+            <div v-if="formError" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ formError }}</div>
+            <fieldset class="form-section">
+              <legend>Identitas produk</legend>
+              <div class="form-grid">
+                <label class="full-field" :class="{ invalid: fieldErrors.name }">Nama produk<input v-model="productForm.name" required maxlength="190" placeholder="Contoh: Gateron Milky Yellow Pro" /><small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small></label>
+                <label :class="{ invalid: fieldErrors.sku }">SKU<input v-model="productForm.sku" required maxlength="100" pattern="[A-Za-z0-9._-]+" title="Huruf, angka, titik, garis bawah, atau tanda hubung" placeholder="gateron-milky-yellow-pro" /><small v-if="fieldErrors.sku" class="field-error">{{ fieldErrors.sku }}</small></label>
+                <label :class="{ invalid: fieldErrors.brand }">Brand / pembuat<input v-model="productForm.brand" required maxlength="120" placeholder="Contoh: Gateron" /><small v-if="fieldErrors.brand" class="field-error">{{ fieldErrors.brand }}</small></label>
+                <label :class="{ invalid: fieldErrors.category_id }">Kategori<select v-model="productForm.category_id" required><option value="" disabled>Pilih kategori</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select><small v-if="fieldErrors.category_id" class="field-error">{{ fieldErrors.category_id }}</small></label>
+                <label :class="{ invalid: fieldErrors.reorder_point }">Batas minimum stok<input v-model="productForm.reorder_point" type="number" min="0" step="1" required /><small v-if="fieldErrors.reorder_point" class="field-error">{{ fieldErrors.reorder_point }}</small></label>
+              </div>
+            </fieldset>
+            <fieldset class="form-section">
+              <legend>Supplier &amp; penyimpanan</legend>
+              <div class="form-grid">
+                <label :class="{ invalid: fieldErrors.supplier_id }">Supplier<select v-model="productForm.supplier_id"><option value="">Belum ditentukan</option><option v-for="supplier in suppliers" :key="supplier.id" :value="String(supplier.id)">{{ supplier.name }}{{ supplier.is_active ? '' : ' (arsip)' }}</option></select><small v-if="fieldErrors.supplier_id" class="field-error">{{ fieldErrors.supplier_id }}</small></label>
+                <label :class="{ invalid: fieldErrors.storage_location }">Lokasi rak<input v-model="productForm.storage_location" maxlength="80" placeholder="Contoh: A-01 / Drawer 2" /><small v-if="fieldErrors.storage_location" class="field-error">{{ fieldErrors.storage_location }}</small></label>
+              </div>
+            </fieldset>
+            <fieldset class="form-section">
+              <legend>Harga inventaris</legend>
+              <div class="form-grid three-columns">
+                <label :class="{ invalid: fieldErrors.purchase_price }">Harga beli<input v-model="productForm.purchase_price" type="number" min="0" step="1" inputmode="numeric" placeholder="Belum dicatat" /><small v-if="fieldErrors.purchase_price" class="field-error">{{ fieldErrors.purchase_price }}</small></label>
+                <label :class="{ invalid: fieldErrors.selling_price }">Harga jual<input v-model="productForm.selling_price" type="number" min="0" step="1" inputmode="numeric" placeholder="Belum ditentukan" /><small v-if="fieldErrors.selling_price" class="field-error">{{ fieldErrors.selling_price }}</small></label>
+                <label>Mata uang<select v-model="productForm.currency"><option value="IDR">IDR — Rupiah</option><option value="USD">USD — Dollar</option></select></label>
+              </div>
+            </fieldset>
+            <fieldset class="form-section">
+              <legend>Deskripsi &amp; gambar</legend>
+              <div class="form-grid">
+                <label class="full-field" :class="{ invalid: fieldErrors.description }">Deskripsi / spesifikasi<textarea v-model="productForm.description" rows="3" maxlength="5000" placeholder="Layout, tipe switch, koneksi, atau detail lain"></textarea><small v-if="fieldErrors.description" class="field-error">{{ fieldErrors.description }}</small></label>
+                <label class="full-field" :class="{ invalid: fieldErrors.image_url }">URL gambar atau path lokal<input v-model="productForm.image_url" type="text" placeholder="https://... atau /images/nama-produk.jpg" /><small v-if="fieldErrors.image_url" class="field-error">{{ fieldErrors.image_url }}</small></label>
+              </div>
+            </fieldset>
+            <details class="form-section optional-section" :open="Boolean(fieldErrors.source_url || fieldErrors.price_max || fieldErrors.price_min || fieldErrors.listing_status)">
+              <summary>Referensi listing <span>opsional</span></summary>
+              <div class="form-grid">
+                <label :class="{ invalid: fieldErrors.listing_status }">Status sumber listing<input v-model="productForm.listing_status" maxlength="120" placeholder="Referensi saja" /><small v-if="fieldErrors.listing_status" class="field-error">{{ fieldErrors.listing_status }}</small></label>
+                <label class="full-field" :class="{ invalid: fieldErrors.source_url }">URL sumber produk<input v-model="productForm.source_url" type="url" placeholder="https://..." /><small v-if="fieldErrors.source_url" class="field-error">{{ fieldErrors.source_url }}</small></label>
+                <label :class="{ invalid: fieldErrors.price_min }">Harga referensi terendah<input v-model="productForm.price_min" type="number" min="0" step="1" placeholder="Opsional" /><small v-if="fieldErrors.price_min" class="field-error">{{ fieldErrors.price_min }}</small></label>
+                <label :class="{ invalid: fieldErrors.price_max }">Harga referensi tertinggi<input v-model="productForm.price_max" type="number" min="0" step="1" placeholder="Opsional" /><small v-if="fieldErrors.price_max" class="field-error">{{ fieldErrors.price_max }}</small></label>
+              </div>
+            </details>
+            <p class="form-hint"><ShieldCheck :size="15" /> Brand adalah pembuat produk; supplier adalah sumber pembelian. Stok awal dicatat lewat pergerakan stok, bukan diketik langsung.</p>
           </div>
-          <p class="form-hint"><ShieldCheck :size="15" /> Brand adalah pembuat produk; supplier adalah sumber pembelian. Saldo awal dicatat sebagai pergerakan stok.</p>
           <div class="modal-actions"><button type="button" class="button secondary" @click="productModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy"><Check :size="16" /> {{ busy ? 'Menyimpan...' : 'Simpan produk' }}</button></div>
         </form>
       </section>
@@ -785,18 +839,21 @@ onMounted(async () => {
 
     <div v-if="supplierModalOpen" class="modal-backdrop" @click.self="supplierModalOpen = false">
       <section class="modal-card supplier-modal" role="dialog" aria-modal="true" aria-labelledby="supplier-modal-title">
-        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">SUPPLIER CONTACTS</div><h2 id="supplier-modal-title">{{ editingSupplier ? 'Edit supplier' : 'Tambah supplier' }}</h2></div><button class="icon-button subtle" title="Tutup" aria-label="Tutup" @click="supplierModalOpen = false"><X :size="18" /></button></header>
+        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">SUPPLIER CONTACTS</div><h2 id="supplier-modal-title">{{ editingSupplier ? 'Edit supplier' : 'Tambah supplier' }}</h2></div><button class="icon-button subtle" type="button" title="Tutup" aria-label="Tutup" @click="supplierModalOpen = false"><X :size="18" /></button></header>
         <form class="modal-form" @submit.prevent="saveSupplier">
-          <div class="form-grid">
-            <label class="full-field">Nama toko / distributor<input v-model="supplierForm.name" required maxlength="150" placeholder="Contoh: Toko Keyboard Indonesia" /></label>
-            <label>Nama kontak<input v-model="supplierForm.contact_person" maxlength="120" placeholder="Opsional" /></label>
-            <label>Nomor telepon<input v-model="supplierForm.phone" type="tel" maxlength="40" placeholder="+62..." /></label>
-            <label>Email<input v-model="supplierForm.email" type="email" maxlength="190" placeholder="kontak@toko.id" /></label>
-            <label>Kota<input v-model="supplierForm.city" maxlength="100" placeholder="Opsional" /></label>
-            <label class="full-field">Situs / katalog<input v-model="supplierForm.website" type="url" placeholder="https://..." /></label>
-            <label class="full-field">Catatan<textarea v-model="supplierForm.notes" rows="3" maxlength="500" placeholder="Syarat pembelian, waktu pengiriman, dan catatan lain"></textarea></label>
+          <div class="modal-body">
+            <div v-if="formError" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ formError }}</div>
+            <div class="form-grid">
+              <label class="full-field" :class="{ invalid: fieldErrors.name }">Nama toko / distributor<input v-model="supplierForm.name" required maxlength="150" placeholder="Contoh: Toko Keyboard Indonesia" /><small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small></label>
+              <label :class="{ invalid: fieldErrors.contact_person }">Nama kontak<input v-model="supplierForm.contact_person" maxlength="120" placeholder="Opsional" /><small v-if="fieldErrors.contact_person" class="field-error">{{ fieldErrors.contact_person }}</small></label>
+              <label :class="{ invalid: fieldErrors.phone }">Nomor telepon<input v-model="supplierForm.phone" type="tel" maxlength="40" placeholder="+62..." /><small v-if="fieldErrors.phone" class="field-error">{{ fieldErrors.phone }}</small></label>
+              <label :class="{ invalid: fieldErrors.email }">Email<input v-model="supplierForm.email" type="email" maxlength="190" placeholder="kontak@toko.id" /><small v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</small></label>
+              <label :class="{ invalid: fieldErrors.city }">Kota<input v-model="supplierForm.city" maxlength="100" placeholder="Opsional" /><small v-if="fieldErrors.city" class="field-error">{{ fieldErrors.city }}</small></label>
+              <label class="full-field" :class="{ invalid: fieldErrors.website }">Situs / katalog<input v-model="supplierForm.website" type="url" placeholder="https://..." /><small v-if="fieldErrors.website" class="field-error">{{ fieldErrors.website }}</small></label>
+              <label class="full-field" :class="{ invalid: fieldErrors.notes }">Catatan<textarea v-model="supplierForm.notes" rows="3" maxlength="500" placeholder="Syarat pembelian, waktu pengiriman, dan catatan lain"></textarea><small v-if="fieldErrors.notes" class="field-error">{{ fieldErrors.notes }}</small></label>
+            </div>
+            <p class="form-hint"><Truck :size="15" /> Kontak tidak dibuat otomatis. Isi hanya informasi supplier yang sudah diketahui.</p>
           </div>
-          <p class="form-hint"><Truck :size="15" /> Kontak tidak dibuat otomatis. Isi hanya informasi supplier yang sudah diketahui.</p>
           <div class="modal-actions"><button type="button" class="button secondary" @click="supplierModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy"><Check :size="16" /> {{ busy ? 'Menyimpan...' : 'Simpan supplier' }}</button></div>
         </form>
       </section>
@@ -804,13 +861,16 @@ onMounted(async () => {
 
     <div v-if="movementModalOpen" class="modal-backdrop" @click.self="movementModalOpen = false">
       <section class="modal-card movement-modal" role="dialog" aria-modal="true" aria-labelledby="movement-modal-title">
-        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">STOCK CONTROL</div><h2 id="movement-modal-title">Catat pergerakan stok</h2></div><button class="icon-button subtle" title="Tutup" aria-label="Tutup" @click="movementModalOpen = false"><X :size="18" /></button></header>
+        <header class="modal-header"><div><div class="eyebrow muted-eyebrow">STOCK CONTROL</div><h2 id="movement-modal-title">Catat pergerakan stok</h2></div><button class="icon-button subtle" type="button" title="Tutup" aria-label="Tutup" @click="movementModalOpen = false"><X :size="18" /></button></header>
         <form class="modal-form" @submit.prevent="saveMovement">
-          <label>Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in products" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select></label>
-          <div class="movement-type-picker"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
-          <label>{{ movementForm.movement_type === 'ADJUSTMENT' ? 'Jumlah saldo setelah penyesuaian' : 'Jumlah unit' }}<input v-model="movementForm.quantity" type="number" min="0" step="1" required :placeholder="movementForm.movement_type === 'ADJUSTMENT' ? 'Masukkan saldo akhir' : 'Masukkan jumlah unit'" /></label>
-          <label>Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: Pembelian dari supplier atau stok rusak"></textarea></label>
-          <p class="form-hint"><ShieldCheck :size="15" /> Perubahan saldo menyimpan stok sebelum/sesudah, pengguna, dan waktu.</p>
+          <div class="modal-body">
+            <div v-if="formError" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ formError }}</div>
+            <label :class="{ invalid: fieldErrors.product_id }">Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in products" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select><small v-if="fieldErrors.product_id" class="field-error">{{ fieldErrors.product_id }}</small></label>
+            <div class="movement-type-picker" role="radiogroup" aria-label="Jenis pergerakan"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" role="radio" :aria-checked="movementForm.movement_type === type.id" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
+            <label :class="{ invalid: fieldErrors.quantity }">{{ movementForm.movement_type === 'ADJUSTMENT' ? 'Jumlah saldo setelah penyesuaian' : 'Jumlah unit' }}<input v-model="movementForm.quantity" type="number" min="0" step="1" inputmode="numeric" required :placeholder="movementForm.movement_type === 'ADJUSTMENT' ? 'Masukkan saldo akhir' : 'Masukkan jumlah unit'" /><small v-if="fieldErrors.quantity" class="field-error">{{ fieldErrors.quantity }}</small></label>
+            <label :class="{ invalid: fieldErrors.note }">Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: Pembelian dari supplier atau stok rusak"></textarea><small v-if="fieldErrors.note" class="field-error">{{ fieldErrors.note }}</small></label>
+            <p class="form-hint"><ShieldCheck :size="15" /> Perubahan saldo menyimpan stok sebelum/sesudah, pengguna, dan waktu.</p>
+          </div>
           <div class="modal-actions"><button type="button" class="button secondary" @click="movementModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy"><Check :size="16" /> {{ busy ? 'Mencatat...' : 'Simpan pergerakan' }}</button></div>
         </form>
       </section>
