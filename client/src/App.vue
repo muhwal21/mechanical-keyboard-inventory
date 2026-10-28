@@ -5,15 +5,15 @@ import {
   Boxes, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Eye,
   EyeOff, History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, MessageCircle,
   Moon, Package, PackageX, Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun,
-  TrendingDown, TrendingUp, Truck, User, UserCheck, UserPlus, UserX, Users, X,
+  TrendingDown, TrendingUp, Truck, User, UserCheck, UserPlus, UserX, Users, Wallet, X,
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 import ActivityHeatmap from './components/ActivityHeatmap.vue';
 import ProductDetailModal from './components/ProductDetailModal.vue';
 import RackMap from './components/RackMap.vue';
 import {
-  formatDate, formatMoney, formatNumber, formatPercent, formatSignedMoney, onImageError, pricing,
-  reasonLabel, reasonsFor, stockState, telUrl, whatsappUrl,
+  formatDate, formatMoney, formatNumber, formatPercent, formatSignedMoney, formatValue, movementValue,
+  onImageError, pricing, reasonLabel, reasonsFor, recordedValue, stockState, telUrl, whatsappUrl,
 } from './utils/format.js';
 
 const user = ref(null);
@@ -97,7 +97,7 @@ const productForm = reactive({
 const supplierForm = reactive({
   name: '', contact_person: '', phone: '', email: '', city: '', website: '', notes: '', is_active: true,
 });
-const movementForm = reactive({ product_id: '', movement_type: 'IN', quantity: '', note: '' });
+const movementForm = reactive({ product_id: '', movement_type: 'IN', reason: 'PURCHASE', quantity: '', note: '' });
 
 const pageTitle = computed(() => ({
   overview: 'Ringkasan stok',
@@ -162,15 +162,53 @@ const movementPreview = computed(() => {
     OUT: before - quantity,
     ADJUSTMENT: quantity,
   }[movementForm.movement_type];
-  return { before, after, invalid: after < 0 };
+  const value = movementValue({
+    reason: movementForm.reason,
+    quantity,
+    unitCost: product.purchase_price,
+    unitPrice: product.selling_price,
+    stockBefore: before,
+    stockAfter: after,
+  });
+  return { before, after, invalid: after < 0, value };
 });
+
+// Rupiah profit and loss for the overview card (last 30 days, from the dashboard API).
+const finance = computed(() => {
+  const data = dashboard.value.finance ?? {};
+  const revenue = Number(data.revenue ?? 0);
+  const cogs = Number(data.cogs ?? 0);
+  const grossProfit = Number(data.grossProfit ?? 0);
+  const summary = dashboard.value.summary ?? {};
+  const potential = summary.inventoryCost != null && summary.inventoryRetail != null
+    ? Number(summary.inventoryRetail) - Number(summary.inventoryCost)
+    : null;
+  return {
+    ...data,
+    revenue,
+    cogs,
+    grossProfit,
+    stockLoss: Number(data.stockLoss ?? 0),
+    netProfit: Number(data.netProfit ?? 0),
+    purchases: Number(data.purchases ?? 0),
+    unitsSold: Number(data.unitsSold ?? 0),
+    grossMargin: revenue > 0 ? (grossProfit / revenue) * 100 : null,
+    cogsShare: revenue > 0 ? Math.min(100, Math.max(0, (cogs / revenue) * 100)) : 0,
+    potential,
+  };
+});
+
+function setMovementType(type) {
+  movementForm.movement_type = type;
+  movementForm.reason = reasonsFor(type)[0]?.id ?? '';
+}
 
 const filteredMovements = computed(() => {
   const term = movementSearch.value.trim().toLowerCase();
   return movements.value.filter((item) => {
     if (movementTypeFilter.value && item.movement_type !== movementTypeFilter.value) return false;
     if (!term) return true;
-    return [item.product?.name, item.product?.sku, item.product?.brand, item.user?.name, item.note]
+    return [item.product?.name, item.product?.sku, item.product?.brand, item.user?.name, item.note, reasonLabel(item.reason)]
       .some((value) => value?.toLowerCase().includes(term));
   });
 });
@@ -265,13 +303,23 @@ function movementCode(item) {
 // Export the active catalog as CSV. Cells that start with = + - @ are prefixed with a
 // quote so spreadsheet apps do not run them as formulas (CSV injection).
 function exportInventoryCsv() {
-  const header = ['SKU', 'Nama produk', 'Brand', 'Kategori', 'Supplier', 'Lokasi rak', 'Stok', 'Batas minimum', 'Kondisi', 'Harga beli', 'Harga jual', 'Mata uang'];
-  const rows = catalog.value.map((product) => [
-    product.sku, product.name, product.brand, product.category?.name ?? '', product.supplier?.name ?? '',
-    product.storage_location ?? '', product.warehouse_stock, product.reorder_point, stockState(product).label,
-    product.purchase_price ?? '', product.selling_price ?? '', product.currency,
-  ]);
+  const header = [
+    'SKU', 'Nama produk', 'Brand', 'Kategori', 'Supplier', 'Lokasi rak', 'Stok', 'Batas minimum', 'Kondisi',
+    'Harga beli', 'Harga jual', 'Laba per unit', 'Margin (%)', 'Nilai stok (modal)', 'Nilai stok (jual)', 'Mata uang',
+  ];
+  const rows = catalog.value.map((product) => {
+    const price = pricing(product);
+    const money = (value) => (value == null ? '' : Math.round(value * 100) / 100);
+    return [
+      product.sku, product.name, product.brand, product.category?.name ?? '', product.supplier?.name ?? '',
+      product.storage_location ?? '', product.warehouse_stock, product.reorder_point, stockState(product).label,
+      money(price.cost), money(price.price), money(price.unitProfit), price.margin == null ? '' : Number(price.margin.toFixed(1)),
+      money(price.stockCost), money(price.stockRetail), product.currency,
+    ];
+  });
+  // Text cells that start with = + - @ are prefixed so spreadsheets do not run them as formulas.
   const escapeCell = (value) => {
+    if (typeof value === 'number') return String(value);
     let text = String(value ?? '');
     if (/^[=+\-@]/.test(text)) text = `'${text}`;
     return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -692,7 +740,7 @@ function openMovement(product = null, type = 'IN') {
   clearFormErrors();
   Object.assign(movementForm, {
     product_id: String(product?.id ?? catalog.value[0]?.id ?? ''),
-    movement_type: type, quantity: '', note: '',
+    movement_type: type, reason: reasonsFor(type)[0]?.id ?? '', quantity: '', note: '',
   });
   movementModalOpen.value = true;
 }
@@ -703,14 +751,16 @@ async function saveMovement() {
   clearFormErrors();
   try {
     const movementType = movementForm.movement_type;
+    const reason = movementForm.reason;
     await post('/stock-movements', {
       product_id: Number(movementForm.product_id),
       movement_type: movementType,
+      reason: movementForm.reason,
       quantity: Number(movementForm.quantity),
       note: movementForm.note,
     });
     movementModalOpen.value = false;
-    showSuccess(movementType === 'IN' ? 'Stok masuk berhasil dicatat.' : movementType === 'OUT' ? 'Stok keluar berhasil dicatat.' : 'Saldo stok berhasil disesuaikan.');
+    showSuccess(movementType === 'ADJUSTMENT' ? 'Saldo stok berhasil disesuaikan.' : `${reasonLabel(reason)} berhasil dicatat.`);
     await loadAll({ clear: false });
     activePage.value = 'movements';
   } catch (error) {
@@ -984,6 +1034,29 @@ onMounted(async () => {
               </div>
             </article>
 
+            <article class="panel finance-card" aria-labelledby="finance-title">
+              <div class="card-head"><h2 id="finance-title">Laba &amp; rugi</h2><span class="card-note">{{ finance.days ?? 30 }} hari · Rupiah</span><button class="round-button small" type="button" title="Buka riwayat transaksi" aria-label="Buka riwayat transaksi" @click="navigate('movements')"><ArrowUpRight :size="16" /></button></div>
+              <div class="finance-hero">
+                <span class="icon-box"><Wallet :size="18" /></span>
+                <div><small>Laba bersih</small><strong :class="finance.netProfit > 0 ? 'positive-value' : finance.netProfit < 0 ? 'negative-value' : ''">{{ formatSignedMoney(finance.netProfit) }}</strong></div>
+                <span class="kpi-delta" :class="finance.grossMargin == null ? '' : finance.grossMargin >= 0 ? 'up' : 'down'">Margin kotor {{ formatPercent(finance.grossMargin) }}</span>
+              </div>
+              <div class="finance-bar" role="img" :aria-label="`Pendapatan terdiri dari HPP ${formatPercent(finance.cogsShare)} dan laba kotor`"><span class="cogs" :style="{ width: `${finance.cogsShare}%` }"></span><span class="profit"></span></div>
+              <div class="finance-bar-legend"><span><i class="cogs"></i>HPP</span><span><i class="profit"></i>Laba kotor</span></div>
+              <dl class="finance-list">
+                <div><dt>Pendapatan penjualan</dt><dd>{{ formatMoney(finance.revenue, 'IDR', '—') }}</dd></div>
+                <div><dt>HPP (modal barang terjual)</dt><dd>{{ formatSignedMoney(-finance.cogs) }}</dd></div>
+                <div class="subtotal"><dt>Laba kotor</dt><dd>{{ formatSignedMoney(finance.grossProfit) }}</dd></div>
+                <div><dt>Rugi stok (rusak/hilang)</dt><dd :class="{ 'negative-value': finance.stockLoss > 0 }">{{ formatSignedMoney(-finance.stockLoss) }}</dd></div>
+              </dl>
+              <div class="finance-foot">
+                <div><small>Belanja stok</small><strong>{{ formatMoney(finance.purchases, 'IDR', '—') }}</strong></div>
+                <div><small>Unit terjual</small><strong>{{ formatNumber(finance.unitsSold) }}</strong></div>
+                <div><small>Nilai stok (modal)</small><strong>{{ formatMoney(dashboard.summary?.inventoryCost, 'IDR', '—') }}</strong></div>
+                <div><small>Potensi laba stok</small><strong>{{ finance.potential == null ? '—' : formatSignedMoney(finance.potential) }}</strong></div>
+              </div>
+              <p v-if="finance.unpricedSales || finance.excludedForeignCurrency" class="finance-note">{{ formatNumber((finance.unpricedSales ?? 0) + (finance.excludedForeignCurrency ?? 0)) }} penjualan tanpa harga rupiah tidak dihitung.</p>
+            </article>
           </section>
 
           <section class="panel rack-panel">
@@ -1013,7 +1086,7 @@ onMounted(async () => {
                 <td data-label="Lokasi">{{ item.product?.storage_location || '—' }}</td>
                 <td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td>
                 <td data-label="Dicatat oleh">{{ item.user?.name }}</td>
-                <td data-label="Jenis"><span class="status-pill" :class="`kind-${item.movement_type.toLowerCase()}`">{{ movementLabel(item.movement_type) }}</span></td>
+                <td data-label="Jenis"><span class="status-pill" :class="`kind-${item.movement_type.toLowerCase()}`">{{ movementLabel(item.movement_type) }}</span><small class="cell-subtext">{{ reasonLabel(item.reason) }}</small></td>
               </tr>
             </tbody></table></div>
             <div v-else class="empty-state compact-empty"><div class="empty-icon"><History :size="21" /></div><strong>Belum ada aktivitas</strong><span>Catat stok masuk, keluar, atau penyesuaian untuk mengisi daftar ini.</span></div>
@@ -1042,7 +1115,7 @@ onMounted(async () => {
               <tr v-for="product in filteredProducts" :key="product.id">
                 <td class="cell-primary"><button type="button" class="product-cell clickable-name" :aria-label="`Buka detail ${product.name}`" @click="openProductDetail(product)"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong :title="product.name">{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></button></td>
                 <td data-label="Supplier"><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td>
-                <td data-label="Harga beli / jual" class="money-pair-cell"><div><span>Beli</span><strong :class="{ 'is-empty': product.purchase_price == null }">{{ formatMoney(product.purchase_price, product.currency, '—') }}</strong></div><div><span>Jual</span><strong :class="{ 'is-empty': product.selling_price == null }">{{ formatMoney(product.selling_price, product.currency, '—') }}</strong></div><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. {{ formatReferencePrice(product) }}</small></td>
+                <td data-label="Harga beli / jual" class="money-pair-cell"><div><span>Beli</span><strong :class="{ 'is-empty': product.purchase_price == null }">{{ formatMoney(product.purchase_price, product.currency, '—') }}</strong></div><div><span>Jual</span><strong :class="{ 'is-empty': product.selling_price == null }">{{ formatMoney(product.selling_price, product.currency, '—') }}</strong></div><small v-if="pricing(product).unitProfit != null" class="margin-tag" :class="pricing(product).unitProfit > 0 ? 'up' : pricing(product).unitProfit < 0 ? 'down' : ''">Untung {{ formatSignedMoney(pricing(product).unitProfit, product.currency) }}/unit · {{ formatPercent(pricing(product).margin) }}</small><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. {{ formatReferencePrice(product) }}</small></td>
                 <td data-label="Stok" class="span-2"><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td>
                 <td data-label="Lokasi" class="span-2"><span class="location-tag">{{ product.storage_location || '—' }}</span></td>
                 <td data-label="Kondisi" class="span-2"><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td>
@@ -1111,8 +1184,8 @@ onMounted(async () => {
             <div class="panel-heading"><div><div class="panel-kicker">STOCK MOVEMENTS</div><h2>Riwayat inventaris</h2><p>{{ filteredMovements.length }} dari {{ movements.length }} catatan terbaru</p></div><div class="audit-tag"><History :size="15" /> Audit trail aktif</div></div>
             <div class="table-toolbar"><div class="search-field"><Search :size="17" /><input v-model="movementSearch" type="search" placeholder="Cari produk, SKU, pengguna, atau catatan..." aria-label="Cari riwayat stok" /><button v-if="movementSearch" class="clear-search" type="button" aria-label="Hapus pencarian" @click="movementSearch = ''"><X :size="14" /></button></div><select v-model="movementTypeFilter" class="filter-select" aria-label="Filter jenis pergerakan"><option value="">Semua aktivitas</option><option value="IN">Stok masuk</option><option value="OUT">Stok keluar</option><option value="ADJUSTMENT">Penyesuaian</option></select></div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat riwayat...</div>
-            <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>Aktivitas</th><th>Produk</th><th>Stok sebelum / sesudah</th><th>Jumlah</th><th>Dicatat oleh</th><th>Waktu</th><th>Catatan</th></tr></thead><tbody>
-              <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><button type="button" class="clickable-name" @click="openProductDetail(item.product)"><strong>{{ item.product?.name }}</strong></button><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
+            <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>Aktivitas</th><th>Produk</th><th>Stok sebelum / sesudah</th><th>Jumlah</th><th>Nilai</th><th>Dicatat oleh</th><th>Waktu</th><th>Catatan</th></tr></thead><tbody>
+              <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span><small class="cell-subtext">{{ reasonLabel(item.reason) }}</small></td><td class="cell-primary"><button type="button" class="clickable-name" @click="openProductDetail(item.product)"><strong>{{ item.product?.name }}</strong></button><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Nilai" class="value-cell"><template v-if="recordedValue(item)"><strong :class="`${recordedValue(item).tone}-value`">{{ formatValue(recordedValue(item), item.currency) }}</strong><small class="cell-subtext">{{ recordedValue(item).label }}</small></template><span v-else class="is-empty">—</span></td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>{{ movements.length ? 'Tidak ada catatan yang cocok' : 'Belum ada riwayat' }}</strong><span>{{ movements.length ? 'Ubah kata pencarian atau filter aktivitas.' : 'Setiap perubahan saldo akan dicatat di halaman ini.' }}</span></div>
           </section>
@@ -1204,7 +1277,8 @@ onMounted(async () => {
           <div class="modal-body">
             <div v-if="formError" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ formError }}</div>
             <label :class="{ invalid: fieldErrors.product_id }">Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in catalog" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select><small v-if="fieldErrors.product_id" class="field-error">{{ fieldErrors.product_id }}</small></label>
-            <div class="movement-type-picker" role="radiogroup" aria-label="Jenis pergerakan"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" role="radio" :aria-checked="movementForm.movement_type === type.id" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
+            <div class="movement-type-picker" role="radiogroup" aria-label="Jenis pergerakan"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" role="radio" :aria-checked="movementForm.movement_type === type.id" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="setMovementType(type.id)"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
+            <div class="reason-field" :class="{ invalid: fieldErrors.reason }"><span id="reason-label">Alasan</span><div class="reason-picker" role="radiogroup" aria-labelledby="reason-label"><button v-for="option in reasonsFor(movementForm.movement_type)" :key="option.id" type="button" role="radio" :aria-checked="movementForm.reason === option.id" :class="{ active: movementForm.reason === option.id }" @click="movementForm.reason = option.id">{{ option.label }}</button></div><small v-if="fieldErrors.reason" class="field-error">{{ fieldErrors.reason }}</small></div>
             <label :class="{ invalid: fieldErrors.quantity }">{{ movementForm.movement_type === 'ADJUSTMENT' ? 'Jumlah saldo setelah penyesuaian' : 'Jumlah unit' }}<input v-model="movementForm.quantity" type="number" min="0" step="1" inputmode="numeric" required :placeholder="movementForm.movement_type === 'ADJUSTMENT' ? 'Masukkan saldo akhir' : 'Masukkan jumlah unit'" /><small v-if="fieldErrors.quantity" class="field-error">{{ fieldErrors.quantity }}</small></label>
             <div v-if="selectedMovementProduct" class="stock-preview" :class="{ invalid: movementPreview?.invalid }" aria-live="polite">
               <div><span>Stok sekarang</span><strong>{{ formatNumber(selectedMovementProduct.warehouse_stock) }} <small>unit</small></strong></div>
@@ -1212,7 +1286,15 @@ onMounted(async () => {
               <div><span>Setelah disimpan</span><strong>{{ movementPreview ? formatNumber(movementPreview.after) : '—' }} <small v-if="movementPreview">unit</small></strong></div>
               <p v-if="movementPreview?.invalid">Stok keluar melebihi stok yang tersedia.</p>
             </div>
-            <label :class="{ invalid: fieldErrors.note }">Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: Pembelian dari supplier atau stok rusak"></textarea><small v-if="fieldErrors.note" class="field-error">{{ fieldErrors.note }}</small></label>
+            <div v-if="selectedMovementProduct && movementPreview && !movementPreview.invalid" class="value-preview" aria-live="polite">
+              <template v-if="movementPreview.value">
+                <div><span>{{ movementPreview.value.label }}</span><strong :class="`${movementPreview.value.tone}-value`">{{ formatValue(movementPreview.value, selectedMovementProduct.currency) }}</strong></div>
+                <div v-if="movementPreview.value.profit != null"><span>Laba kotor</span><strong :class="movementPreview.value.profit >= 0 ? 'positive-value' : 'negative-value'">{{ formatSignedMoney(movementPreview.value.profit, selectedMovementProduct.currency) }}</strong></div>
+                <p>Dihitung dari {{ ['SALE', 'RETURN_IN'].includes(movementForm.reason) ? 'harga jual' : 'harga beli' }} {{ formatMoney(['SALE', 'RETURN_IN'].includes(movementForm.reason) ? selectedMovementProduct.selling_price : selectedMovementProduct.purchase_price, selectedMovementProduct.currency) }}/unit. Harga disimpan bersama catatan ini.</p>
+              </template>
+              <p v-else>Nilai rupiah tidak dihitung karena {{ ['SALE', 'RETURN_IN'].includes(movementForm.reason) ? 'harga jual' : 'harga beli' }} produk belum diisi.</p>
+            </div>
+            <label :class="{ invalid: fieldErrors.note }">Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: nomor nota, nama pelanggan, atau kondisi barang"></textarea><small v-if="fieldErrors.note" class="field-error">{{ fieldErrors.note }}</small></label>
             <p class="form-hint"><ShieldCheck :size="15" /> Perubahan saldo menyimpan stok sebelum/sesudah, pengguna, dan waktu.</p>
           </div>
           <div class="modal-actions"><button type="button" class="button secondary" @click="movementModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy || movementPreview?.invalid"><Check :size="16" /> {{ busy ? 'Mencatat...' : 'Simpan pergerakan' }}</button></div>

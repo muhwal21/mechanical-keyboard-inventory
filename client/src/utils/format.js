@@ -78,6 +78,50 @@ export function reasonLabel(reason) {
   return REASONS[reason]?.label ?? reason ?? '—';
 }
 
+// Money effect of a stock movement, following server/src/services/financeService.js.
+// `unitCost`/`unitPrice` are the prices used (the snapshot for saved rows, current prices
+// for the preview in the form). `amount` is signed from the business' point of view:
+// sales are income, refunds and damaged or lost stock are losses, purchases are spending.
+const VALUE_KINDS = {
+  SALE: { label: 'Pendapatan', unit: 'price', sign: 1, tone: 'positive' },
+  RETURN_IN: { label: 'Refund pelanggan', unit: 'price', sign: -1, tone: 'negative' },
+  PURCHASE: { label: 'Belanja stok', unit: 'cost', sign: 1, tone: 'neutral' },
+  RETURN_OUT: { label: 'Retur ke supplier', unit: 'cost', sign: 1, tone: 'neutral' },
+  DAMAGED: { label: 'Kerugian stok', unit: 'cost', sign: -1, tone: 'negative' },
+  LOST: { label: 'Kerugian stok', unit: 'cost', sign: -1, tone: 'negative' },
+  STOCK_COUNT: { label: 'Selisih opname', unit: 'cost', sign: 1, tone: 'signed' },
+};
+
+export function movementValue({ reason, quantity, unitCost, unitPrice, stockBefore, stockAfter }) {
+  const kind = VALUE_KINDS[reason];
+  if (!kind) return null;
+  const unit = kind.unit === 'price' ? unitPrice : unitCost;
+  if (unit == null || unit === '') return null;
+  const units = reason === 'STOCK_COUNT' ? Number(stockAfter) - Number(stockBefore) : Number(quantity);
+  if (!Number.isFinite(units)) return null;
+  const amount = units * Number(unit) * kind.sign;
+  const tone = kind.tone === 'signed' ? (amount > 0 ? 'positive' : amount < 0 ? 'negative' : 'neutral') : kind.tone;
+  const profit = reason === 'SALE' && unitCost != null ? units * (Number(unitPrice) - Number(unitCost)) : null;
+  return { label: kind.label, amount, tone, profit, signed: kind.tone !== 'neutral' };
+}
+
+// Value of a saved movement row (uses the price snapshot taken when it was recorded).
+export function recordedValue(movement) {
+  return movementValue({
+    reason: movement.reason,
+    quantity: movement.quantity,
+    unitCost: movement.unit_cost,
+    unitPrice: movement.unit_price,
+    stockBefore: movement.stock_before,
+    stockAfter: movement.stock_after,
+  });
+}
+
+export function formatValue(value, currency = 'IDR') {
+  if (!value) return '—';
+  return value.signed ? formatSignedMoney(value.amount, currency) : formatMoney(value.amount, currency, '—');
+}
+
 // Indonesian numbers: "0812-3456-7890" or "+62 812..." → "https://wa.me/6281234567890".
 export function whatsappUrl(phone) {
   if (!phone) return null;
