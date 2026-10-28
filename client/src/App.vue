@@ -4,9 +4,9 @@ import {
   AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, Boxes, Building2,
   Check, ChevronDown, CircleDollarSign, ExternalLink, History, Keyboard,
   LayoutDashboard, LogOut, Mail, MapPin, Package, Phone, Plus, Search,
-  Settings, ShieldCheck, Truck, X, Moon, Sun,
+  Settings, ShieldCheck, Truck, X, Moon, Sun, Users, UserCheck, UserX,
 } from '@lucide/vue';
-import { get, post, put, remove, setCsrfToken } from './api.js';
+import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 
 const user = ref(null);
 function readThemePreference() {
@@ -50,6 +50,7 @@ const catalog = ref([]); // every active product, used by dropdowns and counts
 const categories = ref([]);
 const suppliers = ref([]);
 const movements = ref([]);
+const users = ref([]);
 const searchQuery = ref('');
 const selectedCategory = ref('');
 const selectedSupplier = ref('');
@@ -85,13 +86,26 @@ const pageTitle = computed(() => ({
   products: 'Produk',
   suppliers: 'Supplier',
   movements: 'Pergerakan stok',
+  users: 'Pengguna',
 }[activePage.value]));
 
-const navItems = [
+const baseNavItems = [
   { id: 'overview', label: 'Ringkasan', short: 'Ringkasan', icon: LayoutDashboard },
   { id: 'products', label: 'Produk', short: 'Produk', icon: Package },
   { id: 'suppliers', label: 'Supplier', short: 'Supplier', icon: Truck },
   { id: 'movements', label: 'Pergerakan stok', short: 'Stok', icon: ArrowDownUp },
+];
+// The user-management page is only listed for admins; the API enforces the same rule.
+const navItems = computed(() => (user.value?.role === 'admin'
+  ? [...baseNavItems, { id: 'users', label: 'Pengguna', short: 'Pengguna', icon: Users }]
+  : baseNavItems));
+
+const roleRules = [
+  { action: 'Melihat ringkasan, produk, supplier, dan riwayat stok', admin: true, staff: true },
+  { action: 'Mencatat stok masuk, stok keluar, dan penyesuaian', admin: true, staff: true },
+  { action: 'Menambah, mengubah, dan mengarsipkan produk', admin: true, staff: false },
+  { action: 'Menambah, mengubah, dan mengarsipkan supplier', admin: true, staff: false },
+  { action: 'Mengubah peran dan menonaktifkan pengguna', admin: true, staff: false },
 ];
 
 const today = new Intl.DateTimeFormat('id-ID', {
@@ -237,6 +251,9 @@ async function navigate(page) {
       const [supplierData, productData] = await Promise.all([get(supplierPath), get('/products')]);
       suppliers.value = supplierData.suppliers;
       catalog.value = productData.products;
+    } else if (page === 'users') {
+      const data = await get('/users');
+      users.value = data.users;
     } else {
       const data = await get('/stock-movements');
       movements.value = data.movements;
@@ -306,6 +323,7 @@ async function logout() {
   try {
     await post('/auth/logout', {});
     user.value = null;
+    activePage.value = 'overview';
     csrfToken.value = '';
     setCsrfToken('');
     await refreshCsrf();
@@ -472,6 +490,42 @@ function archiveSupplier(supplier) {
       await loadAll({ clear: false });
       activePage.value = 'suppliers';
     },
+  };
+}
+
+async function saveUserAccess(target, changes) {
+  busy.value = true;
+  clearNotices();
+  try {
+    const result = await patch(`/users/${target.id}`, { role: target.role, is_active: target.is_active, ...changes });
+    Object.assign(target, result.user);
+    showSuccess(`Akses ${result.user.name} diperbarui.`);
+  } catch (error) {
+    handleError(error);
+    const data = await get('/users').catch(() => null);
+    if (data) users.value = data.users;
+  } finally {
+    busy.value = false;
+  }
+}
+
+function changeUserRole(target, role) {
+  if (role === target.role) return;
+  saveUserAccess(target, { role });
+}
+
+function toggleUserActive(target) {
+  if (!target.is_active) {
+    saveUserAccess(target, { is_active: true });
+    return;
+  }
+  clearNotices();
+  pendingConfirmation.value = {
+    title: 'Nonaktifkan pengguna ini?',
+    message: `${target.name} tidak bisa login lagi dan sesinya langsung berakhir. Riwayat stok yang dicatatnya tetap tersimpan.`,
+    confirmLabel: 'Nonaktifkan',
+    busyLabel: 'Menonaktifkan...',
+    action: () => saveUserAccess(target, { is_active: false }),
   };
 }
 
@@ -856,6 +910,37 @@ onMounted(async () => {
           <section v-else class="panel empty-state supplier-empty"><div class="empty-icon"><Truck :size="22" /></div><strong>Belum ada supplier</strong><span>Tambahkan supplier untuk menghubungkan produk dengan sumber pembelian.</span><button v-if="user.role === 'admin'" class="button secondary small-button" @click="openCreateSupplier()"><Plus :size="15" /> Tambah supplier</button></section>
         </template>
 
+        <template v-else-if="activePage === 'users'">
+          <section class="page-heading">
+            <div><div class="eyebrow muted-eyebrow">ACCESS CONTROL</div><h1>Pengguna</h1><p>Atur peran admin/staff dan nonaktifkan akun yang tidak lagi dipakai.</p></div>
+          </section>
+          <section class="supplier-summary-grid">
+            <article class="supplier-summary-card"><span class="supplier-summary-icon"><UserCheck :size="17" /></span><div><small>Pengguna aktif</small><strong>{{ users.filter((entry) => entry.is_active).length }}</strong></div></article>
+            <article class="supplier-summary-card"><span class="supplier-summary-icon contact-icon"><ShieldCheck :size="17" /></span><div><small>Admin aktif</small><strong>{{ users.filter((entry) => entry.is_active && entry.role === 'admin').length }}</strong></div></article>
+            <article class="supplier-summary-card"><span class="supplier-summary-icon warning-icon"><UserX :size="17" /></span><div><small>Nonaktif</small><strong>{{ users.filter((entry) => !entry.is_active).length }}</strong></div></article>
+          </section>
+          <section class="panel table-panel">
+            <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat pengguna...</div>
+            <div v-else class="table-scroll"><table class="data-table user-table stack-table"><thead><tr><th>PENGGUNA</th><th>PERAN</th><th>STATUS</th><th>CATATAN STOK</th><th>BERGABUNG</th><th>AKSI</th></tr></thead><tbody>
+              <tr v-for="entry in users" :key="entry.id" :class="{ 'is-inactive': !entry.is_active }">
+                <td class="cell-primary"><div class="user-cell"><div class="avatar">{{ entry.name?.slice(0, 1).toUpperCase() }}</div><div><strong>{{ entry.name }} <span v-if="entry.id === user.id" class="you-tag">Anda</span></strong><small>{{ entry.email }}</small></div></div></td>
+                <td data-label="Peran"><select class="filter-select role-select" :value="entry.role" :disabled="busy || entry.id === user.id" :aria-label="`Peran ${entry.name}`" @change="changeUserRole(entry, $event.target.value)"><option value="admin">Admin</option><option value="staff">Staff</option></select></td>
+                <td data-label="Status"><span class="stock-badge" :class="entry.is_active ? 'good' : 'empty'"><span></span>{{ entry.is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
+                <td data-label="Catatan stok">{{ formatNumber(entry.movement_count) }} catatan</td>
+                <td data-label="Bergabung">{{ formatDate(entry.createdAt ?? entry.created_at) }}</td>
+                <td class="cell-actions"><button v-if="entry.id !== user.id" class="button secondary small-action" :class="{ 'danger-outline': entry.is_active }" type="button" :disabled="busy" @click="toggleUserActive(entry)"><component :is="entry.is_active ? UserX : UserCheck" :size="15" />{{ entry.is_active ? 'Nonaktifkan' : 'Aktifkan' }}</button></td>
+              </tr>
+            </tbody></table></div>
+            <div class="table-footer"><span>Akun dari halaman <strong>Daftar akun</strong> otomatis berperan staff.</span><span class="table-footer-note"><ShieldCheck :size="14" /> Admin tidak bisa menonaktifkan akunnya sendiri.</span></div>
+          </section>
+          <section class="panel access-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">ROLE-BASED ACCESS</div><h2>Rincian hak akses</h2><p>Aturan ini diterapkan di server lewat middleware <code>requireRole</code>, bukan hanya disembunyikan di tampilan.</p></div></div>
+            <div class="table-scroll"><table class="data-table access-table"><thead><tr><th>AKSI</th><th>ADMIN</th><th>STAFF</th></tr></thead><tbody>
+              <tr v-for="rule in roleRules" :key="rule.action"><td>{{ rule.action }}</td><td><span class="access-mark" :class="rule.admin ? 'yes' : 'no'">{{ rule.admin ? 'Boleh' : 'Tidak' }}</span></td><td><span class="access-mark" :class="rule.staff ? 'yes' : 'no'">{{ rule.staff ? 'Boleh' : 'Tidak' }}</span></td></tr>
+            </tbody></table></div>
+          </section>
+        </template>
+
         <template v-else>
           <section class="page-heading">
             <div><div class="eyebrow muted-eyebrow">INVENTORY AUDIT TRAIL</div><h1>Pergerakan stok</h1><p>Riwayat stok masuk, stok keluar, dan penyesuaian.</p></div>
@@ -979,7 +1064,7 @@ onMounted(async () => {
       <section class="modal-card confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" :aria-busy="busy">
         <div class="confirm-icon"><AlertTriangle :size="21" /></div>
         <div class="confirm-copy"><div class="panel-kicker">KONFIRMASI AKSI</div><h2 id="confirmation-title">{{ pendingConfirmation.title }}</h2><p>{{ pendingConfirmation.message }}</p></div>
-        <div class="modal-actions"><button type="button" class="button secondary" :disabled="busy" @click="cancelPendingConfirmation">Batal</button><button type="button" class="button danger-button" :disabled="busy" @click="confirmPendingAction"><AlertTriangle :size="16" />{{ busy ? 'Mengarsipkan...' : pendingConfirmation.confirmLabel }}</button></div>
+        <div class="modal-actions"><button type="button" class="button secondary" :disabled="busy" @click="cancelPendingConfirmation">Batal</button><button type="button" class="button danger-button" :disabled="busy" @click="confirmPendingAction"><AlertTriangle :size="16" />{{ busy ? (pendingConfirmation.busyLabel ?? 'Mengarsipkan...') : pendingConfirmation.confirmLabel }}</button></div>
       </section>
     </div>
   </div>

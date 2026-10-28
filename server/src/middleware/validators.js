@@ -57,6 +57,11 @@ export const registerSchema = z.object({
   path: ['password_confirmation'], message: 'Konfirmasi kata sandi tidak sama.',
 });
 
+export const userUpdateSchema = z.object({
+  role: z.enum(['admin', 'staff']),
+  is_active: z.boolean(),
+});
+
 export const productSchema = z.object({
   sku: z.string().trim().min(2, 'SKU minimal 2 karakter.').max(100).regex(/^[A-Za-z0-9._-]+$/, 'SKU hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.'),
   name: plainText({ min: 2, max: 190, label: 'Nama produk' }),

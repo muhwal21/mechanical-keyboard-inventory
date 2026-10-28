@@ -648,3 +648,21 @@ html:has(.modal-backdrop), body:has(.modal-backdrop) { overflow: hidden; }
 .auth-content .notice { margin-bottom: 4px; }
 .login-form input.invalid { border-color: var(--accent-red-border); box-shadow: 0 0 0 3px var(--accent-red-soft); }
 .login-form .field-error { margin-top: 6px; }
+
+/* User management */
+.user-cell { display: flex; min-width: 200px; align-items: center; gap: 10px; }
+.user-cell strong, .user-cell small { display: block; }
+.user-cell strong { color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.user-cell small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.you-tag { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 4px; color: var(--accent-blue); background: var(--accent-blue-soft); font-size: 9px; font-weight: 700; vertical-align: 1px; }
+.user-table .is-inactive td { opacity: .62; }
+.user-table .is-inactive td.cell-actions { opacity: 1; }
+.role-select { min-width: 110px; height: 34px; }
+.button.small-action { min-height: 32px; padding: 0 11px; font-size: 11px; }
+.button.secondary.danger-outline:hover { color: var(--accent-red); border-color: var(--accent-red-border); background: var(--accent-red-soft); }
+.access-panel { margin-top: 16px; padding: 18px 19px; }
+.access-panel code { padding: 1px 5px; border-radius: 4px; background: var(--surface-3); font-size: 10px; }
+.access-table td:first-child { color: var(--ink-2); }
+.access-mark { display: inline-flex; padding: 3px 8px; border-radius: 5px; font-size: 10px; font-weight: 600; }
+.access-mark.yes { color: var(--accent-green); background: var(--accent-green-soft); }
+.access-mark.no { color: var(--muted); background: var(--surface-3); }

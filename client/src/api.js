@@ -50,3 +50,7 @@ export function put(path, body) {
 export function remove(path) {
   return apiRequest(path, { method: 'DELETE' });
 }
+
+export function patch(path, body) {
+  return apiRequest(path, { method: 'PATCH', body: JSON.stringify(body) });
+}

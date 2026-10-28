@@ -5,9 +5,12 @@ import { getDashboard } from '../controllers/dashboardController.js';
 import { createProduct, deleteProduct, listCategories, listProducts, updateProduct } from '../controllers/productController.js';
 import { archiveSupplier, createSupplier, listSuppliers, updateSupplier } from '../controllers/supplierController.js';
 import { createMovement, listMovements } from '../controllers/stockMovementController.js';
+import { listUsers, updateUser } from '../controllers/userController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { loginSchema, movementSchema, productSchema, registerSchema, supplierSchema } from '../middleware/validators.js';
+import {
+  loginSchema, movementSchema, productSchema, registerSchema, supplierSchema, userUpdateSchema,
+} from '../middleware/validators.js';
 
 const router = Router();
 const loginLimiter = rateLimit({
@@ -45,5 +48,7 @@ router.put('/products/:id', requireRole('admin'), validateBody(productSchema), u
 router.delete('/products/:id', requireRole('admin'), deleteProduct);
 router.get('/stock-movements', listMovements);
 router.post('/stock-movements', validateBody(movementSchema), createMovement);
+router.get('/users', requireRole('admin'), listUsers);
+router.patch('/users/:id', requireRole('admin'), validateBody(userUpdateSchema), updateUser);
 
 export default router;
