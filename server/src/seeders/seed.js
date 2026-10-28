@@ -89,16 +89,63 @@ function productDefaults(source, categoryId, supplierId, index) {
   };
 }
 
-async function seed({ fresh = false } = {}) {
-  const adminEmail = process.env.SEED_ADMIN_EMAIL?.toLowerCase();
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
-  if (!adminEmail || !adminPassword || adminPassword.length < 12 || adminPassword.toLowerCase().includes('replace-with')) {
-    throw new Error('Set SEED_ADMIN_EMAIL and a custom SEED_ADMIN_PASSWORD of at least 12 characters in .env.');
+// Demo accounts come from environment variables, never from the code. ADMIN is required;
+// DOSEN (lecturer, admin role) and STAFF are created when their email and password are set.
+const accountSpecs = [
+  { key: 'ADMIN', role: 'admin', name: 'KeyStock Admin', username: 'admin', required: true },
+  { key: 'DOSEN', role: 'admin', name: 'Dosen Penguji', username: 'dosen' },
+  { key: 'STAFF', role: 'staff', name: 'Staff Gudang', username: 'staff' },
+];
+
+function readAccount(spec) {
+  const env = process.env;
+  const email = env[`SEED_${spec.key}_EMAIL`]?.trim().toLowerCase();
+  const password = env[`SEED_${spec.key}_PASSWORD`];
+  if (!email || !password) {
+    if (spec.required) throw new Error(`Set SEED_${spec.key}_EMAIL dan SEED_${spec.key}_PASSWORD di .env.`);
+    if (email || password) console.warn(`Akun ${spec.key.toLowerCase()} dilewati: isi email dan password bersamaan.`);
+    return null;
   }
+  if (password.length < 8 || password.toLowerCase().includes('replace-with')) {
+    throw new Error(`SEED_${spec.key}_PASSWORD minimal 8 karakter dan bukan nilai contoh.`);
+  }
+  const username = (env[`SEED_${spec.key}_USERNAME`]?.trim() || spec.username).toLowerCase();
+  if (!/^[a-z0-9._]{3,30}$/.test(username)) throw new Error(`SEED_${spec.key}_USERNAME tidak valid.`);
+  return { email, password, username, role: spec.role, name: env[`SEED_${spec.key}_NAME`]?.trim() || spec.name };
+}
+
+// Creates the account or brings it back to the configured name, role, username, and password.
+async function upsertAccount(account) {
+  let user = await User.unscoped().findOne({ where: { email: account.email } });
+  const usernameOwner = await User.unscoped().findOne({ where: { username: account.username } });
+  const usernameFree = !usernameOwner || (user && usernameOwner.id === user.id);
+  if (!usernameFree) console.warn(`Username "${account.username}" sudah dipakai akun lain; username tidak diubah.`);
+
+  if (!user) {
+    return User.unscoped().create({
+      name: account.name,
+      username: usernameFree ? account.username : null,
+      email: account.email,
+      password_hash: await bcrypt.hash(account.password, 12),
+      role: account.role,
+      is_active: true,
+    });
+  }
+  const updates = { name: account.name, role: account.role, is_active: true };
+  if (usernameFree) updates.username = account.username;
+  if (!(await bcrypt.compare(account.password, user.password_hash))) {
+    updates.password_hash = await bcrypt.hash(account.password, 12);
+  }
+  await user.update(updates);
+  return user;
+}
+
+async function seed({ fresh = false } = {}) {
+  const accounts = accountSpecs.map((spec) => ({ spec, account: readAccount(spec) }));
 
   await sequelize.authenticate();
   if (fresh) {
-    // --fresh drops and recreates the five domain tables (demo reset). Sessions are kept.
+    // --fresh drops and recreates the domain tables (demo reset). Sessions are kept.
     await sequelize.sync({ force: true });
     console.log('Tabel dihapus dan dibuat ulang (--fresh).');
   } else {
@@ -106,42 +153,14 @@ async function seed({ fresh = false } = {}) {
   }
   await migrateInventoryFields();
 
-  const passwordHash = await bcrypt.hash(adminPassword, 12);
-  const [admin] = await User.unscoped().findOrCreate({
-    where: { email: adminEmail },
-    defaults: {
-      name: process.env.SEED_ADMIN_NAME ?? 'KeyStock Admin',
-      email: adminEmail,
-      password_hash: passwordHash,
-      role: 'admin',
-      is_active: true,
-    },
-  });
-  await admin.update({ role: 'admin', is_active: true, name: process.env.SEED_ADMIN_NAME ?? admin.name });
-
-  let staffUser = null;
-  const staffEmail = process.env.SEED_STAFF_EMAIL?.toLowerCase();
-  const staffPassword = process.env.SEED_STAFF_PASSWORD;
-  if (Boolean(staffEmail) !== Boolean(staffPassword)) {
-    console.warn('Akun staff demo dilewati: isi SEED_STAFF_EMAIL dan SEED_STAFF_PASSWORD bersamaan.');
+  const seededUsers = {};
+  for (const { spec, account } of accounts) {
+    if (!account) continue;
+    seededUsers[spec.key] = await upsertAccount(account);
+    console.log(`Akun ${spec.key.toLowerCase()}: ${account.username} / ${account.email} (${account.role})`);
   }
-  if (staffEmail && staffPassword) {
-    if (staffPassword.length < 12 || staffPassword.toLowerCase().includes('replace-with')) {
-      throw new Error('SEED_STAFF_PASSWORD must be a custom password with at least 12 characters.');
-    }
-    const [staff] = await User.unscoped().findOrCreate({
-      where: { email: staffEmail },
-      defaults: {
-      name: process.env.SEED_STAFF_NAME?.trim() || 'Inventory Staff',
-        email: staffEmail,
-        password_hash: await bcrypt.hash(staffPassword, 12),
-        role: 'staff',
-        is_active: true,
-      },
-    });
-    await staff.update({ role: 'staff', is_active: true, name: process.env.SEED_STAFF_NAME?.trim() || staff.name });
-    staffUser = staff;
-  }
+  const admin = seededUsers.ADMIN;
+  const staffUser = seededUsers.STAFF ?? null;
 
   const supplierIds = new Map();
   for (const source of supplierSources) {

@@ -39,7 +39,7 @@ export async function updateUser(req, res, next) {
     }
 
     await user.update({ role: req.body.role, is_active: req.body.is_active });
-    return res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, is_active: user.is_active } });
+    return res.json({ user: { id: user.id, name: user.name, username: user.username, email: user.email, role: user.role, is_active: user.is_active } });
   } catch (error) {
     return next(error);
   }

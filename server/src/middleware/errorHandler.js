@@ -9,7 +9,7 @@ export function errorHandler(error, req, res, next) {
 
   if (error instanceof UniqueConstraintError) {
     const field = Object.keys(error.fields ?? {})[0] ?? '';
-    const labels = { sku: 'SKU', email: 'Email', name: 'Nama' };
+    const labels = { sku: 'SKU', username: 'Username', email: 'Email', name: 'Nama' };
     const label = Object.entries(labels).find(([key]) => field.includes(key))?.[1] ?? 'Data';
     return res.status(409).json({ message: `${label} sudah digunakan. Gunakan nilai lain.` });
   }

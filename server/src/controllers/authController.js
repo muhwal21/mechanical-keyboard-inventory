@@ -3,7 +3,7 @@ import { User } from '../models/index.js';
 import { createCsrfToken } from '../middleware/csrf.js';
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return { id: user.id, name: user.name, username: user.username, email: user.email, role: user.role };
 }
 
 function sessionOperation(req, method) {
@@ -30,11 +30,13 @@ export async function getCurrentUser(req, res, next) {
 
 export async function login(req, res, next) {
   try {
-    const email = req.body.email.toLowerCase();
-    const user = await User.unscoped().findOne({ where: { email } });
+    // One field for both: an "@" means email, otherwise it is a username.
+    const { identifier } = req.body;
+    const where = identifier.includes('@') ? { email: identifier } : { username: identifier };
+    const user = await User.unscoped().findOne({ where });
     const validPassword = user && await bcrypt.compare(req.body.password, user.password_hash);
     if (!user || !user.is_active || !validPassword) {
-      return res.status(401).json({ message: 'Email atau kata sandi tidak sesuai.' });
+      return res.status(401).json({ message: 'Username/email atau kata sandi tidak sesuai.' });
     }
 
     await sessionOperation(req, 'regenerate');
@@ -51,16 +53,20 @@ export async function login(req, res, next) {
 // existing admin from the user-management page, so a visitor cannot register as admin.
 export async function register(req, res, next) {
   try {
-    const existing = await User.unscoped().findOne({ where: { email: req.body.email } });
-    if (existing) {
-      return res.status(409).json({
-        message: 'Email sudah terdaftar. Silakan login.',
-        errors: [{ field: 'email', message: 'Email sudah terdaftar.' }],
-      });
+    const [emailTaken, usernameTaken] = await Promise.all([
+      User.unscoped().findOne({ where: { email: req.body.email } }),
+      User.unscoped().findOne({ where: { username: req.body.username } }),
+    ]);
+    if (emailTaken || usernameTaken) {
+      const errors = [];
+      if (usernameTaken) errors.push({ field: 'username', message: 'Username sudah dipakai.' });
+      if (emailTaken) errors.push({ field: 'email', message: 'Email sudah terdaftar.' });
+      return res.status(409).json({ message: 'Akun dengan data ini sudah ada.', errors });
     }
 
     const user = await User.create({
       name: req.body.name,
+      username: req.body.username,
       email: req.body.email,
       password_hash: await bcrypt.hash(req.body.password, 12),
       role: 'staff',

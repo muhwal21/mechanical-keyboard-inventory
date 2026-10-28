@@ -39,13 +39,18 @@ const optionalSupplierId = z.preprocess(
 
 const email = z.string().trim().toLowerCase().pipe(z.email('Format email tidak valid.').max(190));
 
+export const username = z.string().trim().toLowerCase()
+  .regex(/^[a-z0-9._]{3,30}$/, 'Username 3–30 karakter: huruf kecil, angka, titik, atau garis bawah.');
+
+// Login accepts either the username or the email address in one field.
 export const loginSchema = z.object({
-  email,
+  identifier: z.string().trim().toLowerCase().min(1, 'Username atau email wajib diisi.').max(190),
   password: z.string().min(1, 'Kata sandi wajib diisi.').max(200),
 });
 
 export const registerSchema = z.object({
   name: plainText({ min: 2, max: 120, label: 'Nama' }),
+  username,
   email,
   password: z.string()
     .min(8, 'Kata sandi minimal 8 karakter.')

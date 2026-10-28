@@ -1,8 +1,33 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../models/index.js';
 
+// Usernames were added after the first release: add the column, fill it for existing
+// accounts from the email name, then make it unique.
+async function migrateUsernames(queryInterface) {
+  const columns = await queryInterface.describeTable('users');
+  if (!columns.username) {
+    await queryInterface.addColumn('users', 'username', { type: DataTypes.STRING(40), allowNull: true });
+  }
+
+  const [rows] = await sequelize.query('SELECT id, email FROM users WHERE username IS NULL');
+  for (const row of rows) {
+    const base = row.email.split('@')[0].toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 30) || 'user';
+    let candidate = base.length >= 3 ? base : `${base}user`;
+    const [taken] = await sequelize.query('SELECT id FROM users WHERE username = ? LIMIT 1', { replacements: [candidate] });
+    if (taken.length) candidate = `${candidate.slice(0, 30)}${row.id}`;
+    await sequelize.query('UPDATE users SET username = ? WHERE id = ?', { replacements: [candidate, row.id] });
+  }
+
+  const indexes = await queryInterface.showIndex('users');
+  const hasUnique = indexes.some((index) => index.unique && index.fields.some((field) => field.attribute === 'username'));
+  if (!hasUnique) {
+    await queryInterface.addIndex('users', ['username'], { unique: true, name: 'users_username_unique' });
+  }
+}
+
 export async function migrateInventoryFields() {
   const queryInterface = sequelize.getQueryInterface();
+  await migrateUsernames(queryInterface);
   const columns = await queryInterface.describeTable('products');
 
   if (!columns.purchase_price) {

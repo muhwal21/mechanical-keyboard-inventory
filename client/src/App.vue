@@ -1,11 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watchEffect } from 'vue';
 import {
-  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowRight, ArrowUpFromLine, ArrowUpRight, Boxes,
-  Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Eye, EyeOff,
-  History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, Moon, Package, PackageX,
-  Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun, TrendingDown, TrendingUp, Truck,
-  User, UserCheck, UserPlus, UserX, Users, X,
+  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowRight, ArrowUpFromLine, ArrowUpRight, AtSign,
+  Boxes, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Eye,
+  EyeOff, History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, Moon, Package,
+  PackageX, Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun, TrendingDown, TrendingUp,
+  Truck, User, UserCheck, UserPlus, UserX, Users, X,
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 import ActivityHeatmap from './components/ActivityHeatmap.vue';
@@ -78,8 +78,8 @@ const fieldErrors = ref({});
 
 const authMode = ref('login'); // 'login' or 'register'
 const showPassword = ref(false);
-const loginForm = reactive({ email: '', password: '' });
-const registerForm = reactive({ name: '', email: '', password: '', password_confirmation: '' });
+const loginForm = reactive({ identifier: '', password: '' });
+const registerForm = reactive({ name: '', username: '', email: '', password: '', password_confirmation: '' });
 const productForm = reactive({
   sku: '', name: '', brand: '', category_id: '', supplier_id: '', description: '',
   price_min: '', price_max: '', purchase_price: '', selling_price: '', currency: 'IDR',
@@ -423,7 +423,7 @@ async function submitRegister() {
     user.value = result.user;
     csrfToken.value = result.csrfToken;
     setCsrfToken(result.csrfToken);
-    Object.assign(registerForm, { name: '', email: '', password: '', password_confirmation: '' });
+    Object.assign(registerForm, { name: '', username: '', email: '', password: '', password_confirmation: '' });
     authMode.value = 'login';
     apiUnavailable.value = false;
     await loadAll();
@@ -830,8 +830,8 @@ onMounted(async () => {
 
         <form v-if="authMode === 'login'" class="auth-form" @submit.prevent="submitLogin">
           <div class="auth-field">
-            <label for="email">Email</label>
-            <div class="input-wrap"><Mail :size="17" /><input id="email" v-model="loginForm.email" type="email" autocomplete="username" placeholder="nama@email.com" required /></div>
+            <label for="identifier">Username atau email</label>
+            <div class="input-wrap"><AtSign :size="17" /><input id="identifier" v-model="loginForm.identifier" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="mis. dosen atau nama@email.com" required /></div>
           </div>
           <div class="auth-field">
             <label for="password">Kata sandi</label>
@@ -849,6 +849,11 @@ onMounted(async () => {
             <label for="register-name">Nama lengkap</label>
             <div class="input-wrap" :class="{ invalid: fieldErrors.name }"><User :size="17" /><input id="register-name" v-model="registerForm.name" autocomplete="name" maxlength="120" placeholder="Nama Anda" required /></div>
             <small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small>
+          </div>
+          <div class="auth-field">
+            <label for="register-username">Username</label>
+            <div class="input-wrap" :class="{ invalid: fieldErrors.username }"><AtSign :size="17" /><input id="register-username" v-model="registerForm.username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="huruf kecil, angka, titik, _" required /></div>
+            <small v-if="fieldErrors.username" class="field-error">{{ fieldErrors.username }}</small>
           </div>
           <div class="auth-field">
             <label for="register-email">Email</label>
@@ -906,7 +911,7 @@ onMounted(async () => {
         <button class="round-button" type="button" :title="themeMode === 'dark' ? 'Mode terang' : 'Mode gelap'" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="17" /><Moon v-else :size="17" /></button>
         <div class="user-chip">
           <div class="avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div>
-          <div class="user-meta"><strong>{{ user.name }}</strong><span>{{ user.role === 'admin' ? 'Administrator' : 'Staff inventaris' }}</span></div>
+          <div class="user-meta"><strong>{{ user.name }}</strong><span>@{{ user.username }} · {{ user.role === 'admin' ? 'Admin' : 'Staff' }}</span></div>
         </div>
         <button class="round-button" type="button" title="Keluar" aria-label="Keluar" :disabled="busy" @click="logout"><LogOut :size="17" /></button>
       </div>
@@ -1092,7 +1097,7 @@ onMounted(async () => {
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat pengguna...</div>
             <div v-else class="table-scroll"><table class="data-table user-table stack-table"><thead><tr><th>Pengguna</th><th>Peran</th><th>Status</th><th>Catatan stok</th><th>Bergabung</th><th>Aksi</th></tr></thead><tbody>
               <tr v-for="entry in users" :key="entry.id" :class="{ 'is-inactive': !entry.is_active }">
-                <td class="cell-primary"><div class="user-cell"><div class="avatar">{{ entry.name?.slice(0, 1).toUpperCase() }}</div><div><strong>{{ entry.name }} <span v-if="entry.id === user.id" class="you-tag">Anda</span></strong><small>{{ entry.email }}</small></div></div></td>
+                <td class="cell-primary"><div class="user-cell"><div class="avatar">{{ entry.name?.slice(0, 1).toUpperCase() }}</div><div><strong>{{ entry.name }} <span v-if="entry.id === user.id" class="you-tag">Anda</span></strong><small>@{{ entry.username ?? '—' }} · {{ entry.email }}</small></div></div></td>
                 <td data-label="Peran"><select class="filter-select role-select" :value="entry.role" :disabled="busy || entry.id === user.id" :aria-label="`Peran ${entry.name}`" @change="changeUserRole(entry, $event.target.value)"><option value="admin">Admin</option><option value="staff">Staff</option></select></td>
                 <td data-label="Status"><span class="stock-badge" :class="entry.is_active ? 'good' : 'empty'"><span></span>{{ entry.is_active ? 'Aktif' : 'Nonaktif' }}</span></td>
                 <td data-label="Catatan stok">{{ formatNumber(entry.movement_count) }} catatan</td>
