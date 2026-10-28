@@ -29,7 +29,25 @@ const app = express();
 if (isProduction) app.set('trust proxy', 1);
 
 app.disable('x-powered-by');
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-site' },
+  // Content Security Policy: scripts may only come from this origin, so an injected
+  // <script> or inline event handler would not run even if markup slipped through.
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+}));
 app.use(cors({ origin: config.clientOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(session({
