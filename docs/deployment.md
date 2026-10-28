@@ -26,8 +26,9 @@ Aplikasi dideploy sebagai **satu service Node.js** (Express menyajikan API `/api
 | `DB_NAME` | `${{MySQL.MYSQLDATABASE}}` |
 | `DB_USER` | `${{MySQL.MYSQLUSER}}` |
 | `DB_PASSWORD` | `${{MySQL.MYSQLPASSWORD}}` |
-| `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | akun admin demo (password ≥ 12 karakter) |
-| `SEED_STAFF_NAME` / `SEED_STAFF_EMAIL` / `SEED_STAFF_PASSWORD` | akun staff demo untuk dosen |
+| `SEED_ADMIN_NAME` / `SEED_ADMIN_USERNAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | akun admin pemilik (password ≥ 8 karakter) |
+| `SEED_DOSEN_NAME` / `SEED_DOSEN_USERNAME` / `SEED_DOSEN_EMAIL` / `SEED_DOSEN_PASSWORD` | akun uji dosen, peran admin (contoh `dosen` / `12345678`) |
+| `SEED_STAFF_NAME` / `SEED_STAFF_USERNAME` / `SEED_STAFF_EMAIL` / `SEED_STAFF_PASSWORD` | akun uji staff (contoh `staff` / `12345678`) |
 
 `PORT` diisi otomatis oleh Railway. Jika variabel `DB_*` dikosongkan, `server/src/config.js` otomatis memakai `MYSQLHOST`, `MYSQLPORT`, dst. dari service MySQL yang direferensikan.
 
@@ -37,8 +38,8 @@ Railway membaca `railway.json`:
 
 - **Build:** `npm ci` (otomatis) lalu `npm run build` → menghasilkan `client/dist`.
 - **Start:** `npm run db:sync && npm run db:seed && npm start`
-  - `db:sync` membuat/menyesuaikan tabel.
-  - `db:seed` mengisi kategori, supplier, 23 produk, riwayat stok demo, dan akun demo. Aman dijalankan berulang (hanya membuat data yang belum ada).
+  - `db:sync` membuat/menyesuaikan tabel (termasuk menambah kolom `username`, alasan & harga pergerakan, dan tabel `product_images` pada database lama).
+  - `db:seed` mengisi kategori, supplier, 23 produk + foto, harga, lokasi rak, riwayat stok demo, dan akun demo. Aman dijalankan berulang (hanya membuat data yang belum ada; akun demo disetel ulang sesuai variabel).
   - `npm start` menjalankan Express; karena `NODE_ENV=production`, Express menyajikan `client/dist`, mengaktifkan cookie `Secure`, dan `trust proxy`.
 - **Health check:** `GET /api/health` → `{"status":"ok"}`.
 
@@ -49,8 +50,8 @@ Service aplikasi → **Settings** → **Networking** → **Generate Domain**. Sa
 ## 6. Uji setelah deploy
 
 1. Buka URL di jendela incognito → halaman login muncul.
-2. Login admin demo → ringkasan stok berisi data.
-3. Tambah produk, catat stok masuk, arsipkan produk.
+2. Login `dosen` / `12345678` → ringkasan stok, laba rugi, dan peta rak berisi data.
+3. Tambah produk, unggah foto di detail produk, catat penjualan, arsipkan produk.
 4. Logout → daftar akun baru → pastikan menu *Pengguna* tidak muncul dan `POST /api/products` ditolak (403).
 
 ## Troubleshooting
@@ -61,7 +62,8 @@ Service aplikasi → **Settings** → **Networking** → **Generate Domain**. Sa
 | `Missing required environment variables` | Variabel `DB_*`/`SESSION_SECRET` belum diisi atau referensi `${{MySQL...}}` salah nama service. |
 | `SESSION_SECRET must be a generated secret` | Secret kurang dari 32 karakter atau masih `replace-with...`. |
 | Login berhasil tapi langsung ter-logout | Akses lewat `http://`; cookie `Secure` hanya terkirim lewat HTTPS. Gunakan domain `https://` Railway. |
-| `Seed gagal: Set SEED_ADMIN_EMAIL ...` | Isi `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` (≥ 12 karakter). |
+| `Seed gagal: Set SEED_ADMIN_EMAIL ...` | Isi `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` (≥ 8 karakter, bukan nilai contoh). |
+| Foto gagal diunggah (413) | File lebih dari 2 MB; kecilkan dulu. Tipe selain JPEG/PNG/WebP ditolak (415). |
 | `ER_ACCESS_DENIED_ERROR` / `ECONNREFUSED` | Kredensial atau host MySQL salah; cek variabel referensi dan pastikan service MySQL running. |
 
 ## Mengapa konfigurasi sensitif di `.env`

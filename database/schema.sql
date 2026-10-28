@@ -6,6 +6,7 @@ USE keyboard_inventory;
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
+  username VARCHAR(40) NULL UNIQUE,
   email VARCHAR(190) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('admin', 'staff') NOT NULL DEFAULT 'staff',
@@ -50,10 +51,10 @@ CREATE TABLE IF NOT EXISTS products (
   listing_status VARCHAR(120) NOT NULL DEFAULT 'Ready',
   warehouse_stock INT UNSIGNED NOT NULL DEFAULT 0,
   reorder_point INT UNSIGNED NOT NULL DEFAULT 5,
-  storage_location VARCHAR(80) NULL,
+  storage_location VARCHAR(80) NULL, -- RAK-TINGKAT-SLOT, e.g. A-1-05
   supplier_id INT UNSIGNED NULL,
   source_url VARCHAR(500) NULL,
-  image_url VARCHAR(1000) NULL,
+  image_url VARCHAR(1000) NULL, -- copy of the first photo in product_images
   specifications JSON NOT NULL,
   variants JSON NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -74,12 +75,31 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   quantity INT UNSIGNED NOT NULL,
   stock_before INT UNSIGNED NOT NULL,
   stock_after INT UNSIGNED NOT NULL,
+  reason ENUM('PURCHASE', 'RETURN_IN', 'SALE', 'DAMAGED', 'LOST', 'RETURN_OUT', 'STOCK_COUNT') NOT NULL DEFAULT 'STOCK_COUNT',
+  unit_cost DECIMAL(14,2) NULL, -- purchase price at the time of the movement
+  unit_price DECIMAL(14,2) NULL, -- selling price at the time of a sale or customer return
+  currency VARCHAR(3) NOT NULL DEFAULT 'IDR',
   note VARCHAR(500) NULL,
   created_at DATETIME NOT NULL,
   CONSTRAINT fk_movements_product FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT fk_movements_user FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   INDEX idx_movements_product_date (product_id, created_at),
   INDEX idx_movements_user_date (user_id, created_at)
+) ENGINE=InnoDB;
+
+-- Product photos. Uploaded files are stored in the database so they survive redeploys;
+-- catalog photos only keep a URL. The first row by sort_order is the main photo.
+CREATE TABLE IF NOT EXISTS product_images (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  url VARCHAR(1000) NULL,
+  data LONGBLOB NULL,
+  mime_type VARCHAR(40) NULL,
+  byte_size INT UNSIGNED NULL,
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  CONSTRAINT fk_product_images_product FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  INDEX idx_product_images_order (product_id, sort_order)
 ) ENGINE=InnoDB;
 
 -- express-mysql-session creates its own sessions table when the API starts.

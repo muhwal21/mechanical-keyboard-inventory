@@ -3,11 +3,13 @@ erDiagram
   PRODUCTS ||--o{ STOCK_MOVEMENTS : "berubah lewat (product_id)"
   CATEGORIES ||--o{ PRODUCTS : "mengelompokkan (category_id)"
   SUPPLIERS |o--o{ PRODUCTS : "memasok (supplier_id, nullable)"
+  PRODUCTS ||--o{ PRODUCT_IMAGES : "punya foto (product_id)"
 
   USERS {
     int id PK
     varchar name
-    varchar email UK
+    varchar username UK "login"
+    varchar email UK "login"
     varchar password_hash "bcrypt"
     enum role "admin | staff"
     boolean is_active
@@ -48,9 +50,9 @@ erDiagram
     varchar listing_status
     int warehouse_stock
     int reorder_point
-    varchar storage_location
+    varchar storage_location "RAK-TINGKAT-SLOT"
     varchar source_url
-    varchar image_url
+    varchar image_url "foto utama"
     json specifications
     json variants
     boolean is_active "soft delete / arsip"
@@ -65,6 +67,20 @@ erDiagram
     int quantity
     int stock_before
     int stock_after
+    enum reason "PURCHASE | SALE | DAMAGED | ..."
+    decimal unit_cost "snapshot harga beli"
+    decimal unit_price "snapshot harga jual"
+    char currency
     varchar note
+    datetime created_at
+  }
+  PRODUCT_IMAGES {
+    int id PK
+    int product_id FK "ON DELETE CASCADE"
+    varchar url "foto katalog (opsional)"
+    longblob data "foto unggahan admin"
+    varchar mime_type "jpeg | png | webp"
+    int byte_size "maks 2 MB"
+    int sort_order "0 = foto utama"
     datetime created_at
   }

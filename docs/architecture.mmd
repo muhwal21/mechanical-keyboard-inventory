@@ -6,14 +6,14 @@ flowchart LR
     direction TB
     mw["Middleware\nhelmet (CSP) · cors · express-session\ncsrfProtection · requireAuth · requireRole\nvalidateBody (zod) · rate limit"]
     routes["Routes\nroutes/apiRoutes.js"]
-    ctrl["Controllers\nauth · dashboard · product\nsupplier · stockMovement · user"]
-    svc["Service\nstockService.recordMovement\n(transaction + row lock)"]
-    models["Models (Sequelize ORM)\nUser · Category · Supplier\nProduct · StockMovement"]
+    ctrl["Controllers\nauth · dashboard · product · productImage\nsupplier · stockMovement · user"]
+    svc["Services\nstockService.recordMovement\n(transaction + row lock + price snapshot)\nfinanceService (laba rugi)"]
+    models["Models (Sequelize ORM)\nUser · Category · Supplier\nProduct · ProductImage · StockMovement"]
     mw --> routes --> ctrl
     ctrl --> svc --> models
     ctrl --> models
   end
-  db[("MySQL 8\nusers · categories · suppliers\nproducts · stock_movements · sessions")]
+  db[("MySQL 8\nusers · categories · suppliers · products\nproduct_images · stock_movements · sessions")]
   vue -- "HTTPS JSON /api/*\ncookie keystock.sid" --> mw
   models -- "parameterized SQL" --> db
   ctrl -- "JSON response" --> vue

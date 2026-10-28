@@ -8,11 +8,14 @@ Proyek UAS *Web Application Development* — Universitas Cakrawala.
 
 ## Fitur
 
-- **Autentikasi:** registrasi (akun baru = staff), login, logout, session di MySQL.
-- **Ringkasan stok** (desain mengikuti referensi Quantara, hitam-putih): KPI total unit / perlu restock / stok habis, heatmap aktivitas 7/14/30 hari, stok terendah–rata-rata–tertinggi, detail produk + kontak supplier, peta rak, tabel aktivitas terbaru dengan filter + pagination, ekspor CSV.
-- **Produk:** CRUD lengkap (arsip = soft delete), pencarian, filter kategori/supplier/stok rendah, validasi per-field.
-- **Supplier:** CRUD + kontak (telepon, email, situs).
-- **Pergerakan stok:** stok masuk, keluar, penyesuaian dengan pratinjau saldo; setiap catatan menyimpan stok sebelum/sesudah, pengguna, waktu.
+- **Autentikasi:** registrasi (nama, username, email; akun baru = staff), login dengan **username atau email**, logout, session di MySQL.
+- **Ringkasan stok** (desain mengikuti referensi Quantara, hitam-putih): KPI total unit / perlu restock / stok habis, heatmap aktivitas 7/14/30 hari, detail produk + kontak supplier, tabel aktivitas terbaru dengan filter + pagination, ekspor CSV.
+- **Laba & rugi 30 hari:** pendapatan, HPP, laba kotor + margin, rugi stok (rusak/hilang), laba bersih, belanja stok, nilai stok, dan potensi laba stok.
+- **Peta rak gudang:** gambar rak bertingkat dengan lokasi `RAK-TINGKAT-SLOT` (mis. `A-1-05`); tinggi kardus = jumlah stok, warna = status stok; klik untuk detail.
+- **Produk:** CRUD lengkap (arsip = soft delete), harga beli/jual + laba per unit dan margin, pencarian, filter kategori/supplier/stok rendah, validasi per-field.
+- **Detail produk (dialog):** galeri foto bergeser (slide); admin bisa unggah, urutkan, pilih foto utama, dan hapus foto (disimpan di MySQL).
+- **Supplier:** CRUD + kontak; tombol **WhatsApp**, telepon, dan email langsung dari kartu supplier.
+- **Pergerakan stok:** masuk (pembelian, retur pelanggan), keluar (penjualan, rusak, hilang, retur ke supplier), penyesuaian (stock opname) dengan pratinjau saldo dan nilai rupiah; setiap catatan menyimpan stok sebelum/sesudah, alasan, harga saat itu, pengguna, waktu.
 - **Pengguna (admin):** ubah peran admin/staff, nonaktifkan akun, tabel rincian hak akses.
 - Mode terang/gelap, responsif (tab bar bawah di ponsel, tabel jadi kartu).
 
@@ -20,21 +23,23 @@ Proyek UAS *Web Application Development* — Universitas Cakrawala.
 
 | Aksi | Admin | Staff |
 | --- | :---: | :---: |
-| Lihat ringkasan, produk, supplier, riwayat stok | ✓ | ✓ |
+| Lihat ringkasan, laba rugi, produk, supplier, riwayat stok | ✓ | ✓ |
 | Catat stok masuk / keluar / penyesuaian | ✓ | ✓ |
 | Tambah / ubah / arsipkan produk dan supplier | ✓ | ✗ |
+| Kelola foto produk | ✓ | ✗ |
 | Kelola pengguna | ✓ | ✗ |
 
 ## Akun demo
 
-Akun dibuat oleh seeder dari nilai `SEED_*` di `.env` (lokal) atau *Variables* Railway (production). Password **tidak** disimpan di repository.
+Akun dibuat oleh seeder dari nilai `SEED_*` di `.env` (lokal) atau *Variables* Railway (production), bukan dari kode. Login bisa memakai **username atau email**.
 
-| Peran | Email | Password |
-| --- | --- | --- |
-| Admin | nilai `SEED_ADMIN_EMAIL` (contoh: `admin@keystock.local`) | nilai `SEED_ADMIN_PASSWORD` |
-| Staff | nilai `SEED_STAFF_EMAIL` (contoh: `staff@keystock.local`) | nilai `SEED_STAFF_PASSWORD` |
+| Peran | Username | Email | Password (nilai di `.env.example`) |
+| --- | --- | --- | --- |
+| Admin — akun uji dosen | `dosen` | `dosen@keystock.local` | `12345678` |
+| Staff | `staff` | `staff@keystock.local` | `12345678` |
+| Admin pemilik | `admin` | `admin@keystock.local` | nilai `SEED_ADMIN_PASSWORD` |
 
-Akun staff tambahan bisa dibuat sendiri lewat tab **Daftar akun** di halaman login.
+Akun staff tambahan bisa dibuat sendiri lewat tab **Daftar akun** di halaman login. Ganti password demo jika aplikasi dibuka untuk umum.
 
 ## Menjalankan di komputer lokal
 
@@ -45,16 +50,17 @@ Prasyarat: Node.js 24 (lihat `.nvmrc`), npm, dan MySQL 8 (lokal atau Docker Desk
 cp .env.example .env
 #    - SESSION_SECRET  -> hasil: openssl rand -hex 32
 #    - DB_PASSWORD / DB_ROOT_PASSWORD -> password MySQL lokal
-#    - SEED_ADMIN_PASSWORD (min. 12 karakter), opsional SEED_STAFF_PASSWORD
+#    - SEED_ADMIN_PASSWORD (min. 8 karakter); akun dosen & staff sudah berisi 12345678
 
 # 2. Database (pilih salah satu)
 docker compose up -d mysql            # MySQL 8.4 via Docker
 #  atau import database/schema.sql ke MySQL lokal lalu buat user sesuai .env
+#  (database/keystock-demo.sql = struktur + data demo siap pakai)
 
 # 3. Dependency + data
 npm install
 npm run db:sync     # buat / sesuaikan tabel
-npm run db:seed     # kategori, supplier, 23 produk, riwayat stok demo, akun demo
+npm run db:seed     # kategori, supplier, 23 produk + foto, harga, lokasi rak, riwayat stok, akun demo
 
 # 4. Jalankan (API :3000 + Vite :5173)
 npm run dev
@@ -77,18 +83,20 @@ Buka <http://localhost:5173>.
 ```text
 client/                         View — Vue 3 + Vite
   src/App.vue                   halaman, state, dan pemanggilan API
-  src/components/               ActivityHeatmap.vue, RackMap.vue
+  src/components/               ActivityHeatmap.vue, RackMap.vue, ProductDetailModal.vue
+  src/utils/format.js           format rupiah/tanggal, laba & margin, link WhatsApp, lokasi rak
   src/api.js                    fetch wrapper + header X-CSRF-Token
   src/style.css                 design tokens terang/gelap
 server/src/
   routes/apiRoutes.js           routing URL -> middleware -> controller
-  controllers/                  Controller: auth, dashboard, product, supplier, stockMovement, user
-  models/index.js               Model: User, Category, Supplier, Product, StockMovement + relasi
-  services/stockService.js      logika stok (transaksi + row lock)
+  controllers/                  Controller: auth, dashboard, product, productImage, supplier, stockMovement, user
+  models/index.js               Model: User, Category, Supplier, Product, ProductImage, StockMovement + relasi
+  services/                     stockService (transaksi + row lock, snapshot harga), financeService (laba rugi)
   middleware/                   auth (requireAuth/requireRole), csrf, validate, validators (zod), errorHandler
   db/                           sync & migrasi kolom
   seeders/                      catalog.json + seed.js
-database/schema.sql             DDL MySQL (5 tabel, foreign key, index)
+database/schema.sql             DDL MySQL (6 tabel, foreign key, index)
+database/keystock-demo.sql      dump struktur + data demo (import langsung ke MySQL)
 docs/                           kebutuhan, arsitektur, ERD, flowchart, deployment, keputusan desain
 railway.json                    konfigurasi build/start Railway
 docker-compose.yml              MySQL lokal
@@ -112,12 +120,12 @@ docker-compose.yml              MySQL lokal
 
 ## Data dan sumber
 
-Katalog contoh mengambil referensi produk dari Noir Gear dan Work Louder (nama brand, bukan nama aplikasi). Stok, lokasi rak, dan riwayat 7 hari terakhir adalah simulasi untuk demo. Harga listing hanya referensi; harga beli/jual dibiarkan kosong sampai diisi admin. Foto produk disimpan lokal di `client/public/images/`.
+Katalog contoh mengambil referensi produk dari Noir Gear dan Work Louder (nama brand, bukan nama aplikasi). Stok, lokasi rak, harga beli/jual, dan riwayat 7 hari terakhir adalah **simulasi** untuk demo: harga jual = harga katalog, harga beli = harga jual × rasio modal per kategori (keyboard 75%, keycaps 70%, switch 65%, deskmat 62%, aksesori 60%). Foto katalog disimpan lokal di `client/public/images/`; foto yang diunggah admin disimpan di tabel `product_images`.
 
 ## Checklist deliverables UAS
 
 - [x] Aplikasi CRUD produk, supplier, dan pergerakan stok
-- [x] ERD 5 tabel berelasi + skrip `database/schema.sql`
+- [x] ERD 6 tabel berelasi + skrip `database/schema.sql` + dump data `database/keystock-demo.sql`
 - [x] Registrasi, login, logout, session, role admin/staff
 - [x] Validasi input server, CSRF, sanitasi XSS, query berparameter
 - [x] `.env.example` + README instalasi + akun demo
