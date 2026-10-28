@@ -43,7 +43,7 @@ export const productSchema = z.object({
   is_active: z.coerce.boolean().optional().default(true),
 }).refine((data) => data.price_min == null || data.price_max == null || data.price_min <= data.price_max, {
   path: ['price_max'], message: 'Harga maksimum harus sama dengan atau lebih besar dari harga minimum.',
-}).refine((data) => data.purchase_price == null || data.selling_price == null || data.currency !== '' || data.purchase_price <= data.selling_price, {
+}).refine((data) => data.purchase_price == null || data.selling_price == null || data.purchase_price <= data.selling_price, {
   path: ['selling_price'], message: 'Harga jual harus sama dengan atau lebih besar dari harga beli.',
 });
 

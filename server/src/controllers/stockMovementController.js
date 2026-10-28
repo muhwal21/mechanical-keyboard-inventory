@@ -5,7 +5,7 @@ export async function listMovements(req, res, next) {
   try {
     const movements = await StockMovement.findAll({
       include: [
-        { model: Product, as: 'product', attributes: ['id', 'name', 'sku'] },
+        { model: Product, as: 'product', attributes: ['id', 'name', 'sku', 'brand'] },
         { model: User, as: 'user', attributes: ['id', 'name'] },
       ],
       order: [['created_at', 'DESC']],
@@ -28,7 +28,7 @@ export async function createMovement(req, res, next) {
     });
     const movement = await StockMovement.findByPk(result.movement.id, {
       include: [
-        { model: Product, as: 'product', attributes: ['id', 'name', 'sku'] },
+        { model: Product, as: 'product', attributes: ['id', 'name', 'sku', 'brand'] },
         { model: User, as: 'user', attributes: ['id', 'name'] },
       ],
     });

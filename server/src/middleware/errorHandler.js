@@ -8,7 +8,10 @@ export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
 
   if (error instanceof UniqueConstraintError) {
-    return res.status(409).json({ message: 'SKU atau email sudah digunakan.' });
+    const field = Object.keys(error.fields ?? {})[0] ?? '';
+    const labels = { sku: 'SKU', email: 'Email', name: 'Nama' };
+    const label = Object.entries(labels).find(([key]) => field.includes(key))?.[1] ?? 'Data';
+    return res.status(409).json({ message: `${label} sudah digunakan. Gunakan nilai lain.` });
   }
   if (error instanceof ForeignKeyConstraintError) {
     return res.status(409).json({ message: 'Data masih dipakai oleh catatan lain dan tidak dapat dihapus.' });
