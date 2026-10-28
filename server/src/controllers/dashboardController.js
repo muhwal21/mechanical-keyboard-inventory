@@ -3,7 +3,7 @@ import { Category, Product, StockMovement, Supplier, User } from '../models/inde
 
 export async function getDashboard(req, res, next) {
   try {
-    const [activeProducts, stockValueRows, lowStockProducts, categories, recentMovements, activeSuppliers] = await Promise.all([
+    const [activeProducts, stockValueRows, lowStockProducts, categories, recentMovements, activeSuppliers, pricedPurchaseProducts] = await Promise.all([
       Product.count({ where: { is_active: true } }),
       Product.findAll({ attributes: ['warehouse_stock', 'purchase_price'], where: { is_active: true } }),
       Product.findAll({
@@ -25,14 +25,17 @@ export async function getDashboard(req, res, next) {
         limit: 6,
       }),
       Supplier.count({ where: { is_active: true } }),
+      Product.count({ where: { is_active: true, purchase_price: { [Op.ne]: null } } }),
     ]);
 
     const totalStock = stockValueRows.reduce((sum, product) => sum + product.warehouse_stock, 0);
-    const inventoryCost = stockValueRows.reduce((sum, product) => sum + (Number(product.purchase_price) || 0) * product.warehouse_stock, 0);
+    const inventoryCost = pricedPurchaseProducts
+      ? stockValueRows.reduce((sum, product) => sum + (Number(product.purchase_price) || 0) * product.warehouse_stock, 0)
+      : null;
     const lowStockCount = await Product.count({ where: { is_active: true, [Op.and]: [literal('warehouse_stock <= reorder_point')] } });
     const outOfStockCount = await Product.count({ where: { is_active: true, warehouse_stock: 0 } });
     return res.json({
-      summary: { activeProducts, totalStock, lowStockCount, outOfStockCount, inventoryCost, activeSuppliers },
+      summary: { activeProducts, totalStock, lowStockCount, outOfStockCount, inventoryCost, pricedPurchaseProducts, activeSuppliers },
       categories,
       lowStockProducts,
       recentMovements,

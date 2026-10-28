@@ -37,7 +37,7 @@ function productDefaults(source, categoryId, supplierId, index) {
     price_min: priceMin,
     price_max: priceMax,
     purchase_price: null,
-    selling_price: priceMin,
+    selling_price: null,
     currency: isUsd ? 'USD' : 'IDR',
     listing_status: source.status ?? 'Ready',
     warehouse_stock: simulatedStock,
@@ -144,10 +144,13 @@ async function seed() {
         }, { transaction });
       } else {
         const defaults = productDefaults(source, categoryId, supplierId, index);
+        const sourcePriceWasUsedAsSellingPrice = product.selling_price != null
+          && defaults.price_min != null
+          && Number(product.selling_price) === Number(defaults.price_min);
         await product.update({
           supplier_id: product.supplier_id ?? defaults.supplier_id,
           purchase_price: product.purchase_price ?? defaults.purchase_price,
-          selling_price: product.selling_price ?? defaults.selling_price,
+          selling_price: sourcePriceWasUsedAsSellingPrice ? null : product.selling_price,
           storage_location: product.storage_location || defaults.storage_location,
         }, { transaction });
       }
