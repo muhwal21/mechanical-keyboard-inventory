@@ -54,6 +54,7 @@ const stockFilter = ref('all');
 const productModalOpen = ref(false);
 const supplierModalOpen = ref(false);
 const movementModalOpen = ref(false);
+const pendingConfirmation = ref(null);
 const editingProduct = ref(null);
 const editingSupplier = ref(null);
 
@@ -301,17 +302,19 @@ async function saveProduct() {
   }
 }
 
-async function archiveProduct(product) {
-  if (!window.confirm(`Arsipkan ${product.name}? Riwayat stoknya akan tetap disimpan.`)) return;
+function archiveProduct(product) {
   clearNotices();
-  try {
-    await remove(`/products/${product.id}`);
-    showSuccess('Produk diarsipkan; riwayat stok tetap tersimpan.');
-    await loadAll({ clear: false });
-    activePage.value = 'products';
-  } catch (error) {
-    handleError(error);
-  }
+  pendingConfirmation.value = {
+    title: 'Arsipkan produk ini?',
+    message: `${product.name} tidak akan muncul di katalog aktif. Riwayat stoknya tetap disimpan.`,
+    confirmLabel: 'Arsipkan produk',
+    action: async () => {
+      await remove(`/products/${product.id}`);
+      showSuccess('Produk diarsipkan; riwayat stok tetap tersimpan.');
+      await loadAll({ clear: false });
+      activePage.value = 'products';
+    },
+  };
 }
 
 function resetSupplierForm() {
@@ -360,16 +363,38 @@ async function saveSupplier() {
   }
 }
 
-async function archiveSupplier(supplier) {
-  if (!window.confirm(`Arsipkan supplier ${supplier.name}? Produk dan riwayatnya tidak dihapus.`)) return;
+function archiveSupplier(supplier) {
+  clearNotices();
+  pendingConfirmation.value = {
+    title: 'Arsipkan supplier ini?',
+    message: `${supplier.name} akan dinonaktifkan. Produk dan riwayat stok yang terhubung tetap disimpan.`,
+    confirmLabel: 'Arsipkan supplier',
+    action: async () => {
+      await remove(`/suppliers/${supplier.id}`);
+      showSuccess('Supplier diarsipkan; data produk tetap tersimpan.');
+      await loadAll({ clear: false });
+      activePage.value = 'suppliers';
+    },
+  };
+}
+
+function cancelPendingConfirmation() {
+  if (!busy.value) pendingConfirmation.value = null;
+}
+
+async function confirmPendingAction() {
+  const request = pendingConfirmation.value;
+  if (!request || busy.value) return;
+  busy.value = true;
   clearNotices();
   try {
-    await remove(`/suppliers/${supplier.id}`);
-    showSuccess('Supplier diarsipkan; data produk tetap tersimpan.');
-    await loadAll({ clear: false });
-    activePage.value = 'suppliers';
+    await request.action();
+    pendingConfirmation.value = null;
   } catch (error) {
+    pendingConfirmation.value = null;
     handleError(error);
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -762,12 +787,20 @@ onMounted(async () => {
         <header class="modal-header"><div><div class="eyebrow muted-eyebrow">STOCK CONTROL</div><h2 id="movement-modal-title">Catat pergerakan stok</h2></div><button class="icon-button subtle" title="Tutup" aria-label="Tutup" @click="movementModalOpen = false"><X :size="18" /></button></header>
         <form class="modal-form" @submit.prevent="saveMovement">
           <label>Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in products" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select></label>
-          <div class="movement-type-picker"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" class="movement-type-option" :class="{ selected: movementForm.movement_type === type.id }" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
+          <div class="movement-type-picker"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
           <label>{{ movementForm.movement_type === 'ADJUSTMENT' ? 'Jumlah saldo setelah penyesuaian' : 'Jumlah unit' }}<input v-model="movementForm.quantity" type="number" min="0" step="1" required :placeholder="movementForm.movement_type === 'ADJUSTMENT' ? 'Masukkan saldo akhir' : 'Masukkan jumlah unit'" /></label>
           <label>Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: Pembelian dari supplier atau stok rusak"></textarea></label>
           <p class="form-hint"><ShieldCheck :size="15" /> Perubahan saldo menyimpan stok sebelum/sesudah, pengguna, dan waktu.</p>
           <div class="modal-actions"><button type="button" class="button secondary" @click="movementModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy"><Check :size="16" /> {{ busy ? 'Mencatat...' : 'Simpan pergerakan' }}</button></div>
         </form>
+      </section>
+    </div>
+
+    <div v-if="pendingConfirmation" class="modal-backdrop confirmation-backdrop" @click.self="cancelPendingConfirmation">
+      <section class="modal-card confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" :aria-busy="busy">
+        <div class="confirm-icon"><AlertTriangle :size="21" /></div>
+        <div class="confirm-copy"><div class="panel-kicker">KONFIRMASI AKSI</div><h2 id="confirmation-title">{{ pendingConfirmation.title }}</h2><p>{{ pendingConfirmation.message }}</p></div>
+        <div class="modal-actions"><button type="button" class="button secondary" :disabled="busy" @click="cancelPendingConfirmation">Batal</button><button type="button" class="button danger-button" :disabled="busy" @click="confirmPendingAction"><AlertTriangle :size="16" />{{ busy ? 'Mengarsipkan...' : pendingConfirmation.confirmLabel }}</button></div>
       </section>
     </div>
   </div>
