@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import catalog from './catalog.json' with { type: 'json' };
-import { Category, Product, sequelize, StockMovement, Supplier, User } from '../models/index.js';
+import { Category, Product, ProductImage, sequelize, StockMovement, Supplier, User } from '../models/index.js';
 import { migrateInventoryFields } from '../db/migrations.js';
 
 const categoryLabels = {
@@ -197,6 +197,7 @@ async function seed({ fresh = false } = {}) {
 
       if (created) {
         inserted += 1;
+        if (product.image_url) await ProductImage.create({ product_id: product.id, url: product.image_url, sort_order: 0 }, { transaction });
         const history = demoHistory(index, product.warehouse_stock);
         await StockMovement.create({
           product_id: product.id,

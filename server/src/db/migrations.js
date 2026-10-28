@@ -1,5 +1,5 @@
-import { DataTypes } from 'sequelize';
-import { sequelize } from '../models/index.js';
+import { DataTypes, Op } from 'sequelize';
+import { sequelize, Product, ProductImage } from '../models/index.js';
 
 // Usernames were added after the first release: add the column, fill it for existing
 // accounts from the email name, then make it unique.
@@ -22,6 +22,15 @@ async function migrateUsernames(queryInterface) {
   const hasUnique = indexes.some((index) => index.unique && index.fields.some((field) => field.attribute === 'username'));
   if (!hasUnique) {
     await queryInterface.addIndex('users', ['username'], { unique: true, name: 'users_username_unique' });
+  }
+}
+
+// Products created before the gallery existed get their single image_url as the first photo.
+async function migrateProductImages() {
+  const products = await Product.findAll({ attributes: ['id', 'image_url'], where: { image_url: { [Op.ne]: null } } });
+  for (const product of products) {
+    const count = await ProductImage.count({ where: { product_id: product.id } });
+    if (count === 0) await ProductImage.create({ product_id: product.id, url: product.image_url, sort_order: 0 });
   }
 }
 
@@ -62,4 +71,5 @@ export async function migrateInventoryFields() {
       onDelete: 'SET NULL',
     });
   }
+  await migrateProductImages();
 }

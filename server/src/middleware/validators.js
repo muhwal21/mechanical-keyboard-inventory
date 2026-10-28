@@ -22,11 +22,6 @@ function optionalText({ max, label }) {
 // stored and later rendered inside an <a href>.
 const webUrl = z.url({ protocol: /^https?$/, message: 'Gunakan URL yang diawali http:// atau https://.' }).max(1000);
 const optionalUrl = z.union([webUrl, z.literal('')]).optional().transform((value) => value || null);
-const optionalImage = z.union([
-  webUrl,
-  z.string().regex(/^\/images\/[A-Za-z0-9._-]+$/, 'Path gambar lokal harus berbentuk /images/nama-file.jpg.'),
-  z.literal(''),
-]).optional().transform((value) => value || null);
 const optionalPrice = z.preprocess(
   (value) => value === '' ? null : value,
   z.union([z.null(), z.coerce.number().nonnegative('Harga tidak boleh negatif.')]).default(null),
@@ -83,7 +78,6 @@ export const productSchema = z.object({
   reorder_point: z.coerce.number().int().nonnegative('Batas minimum tidak boleh negatif.').max(1000000),
   storage_location: plainText({ max: 80, label: 'Lokasi rak' }).optional().default(''),
   source_url: optionalUrl,
-  image_url: optionalImage,
   specifications: z.record(z.string(), z.unknown()).optional().default({}),
   variants: z.array(plainText({ max: 190, label: 'Varian' })).optional().default([]),
   is_active: z.boolean().optional().default(true),
@@ -102,6 +96,10 @@ export const supplierSchema = z.object({
   website: optionalUrl,
   notes: optionalText({ max: 500, label: 'Catatan' }),
   is_active: z.boolean().optional().default(true),
+});
+
+export const imageOrderSchema = z.object({
+  ids: z.array(z.coerce.number().int().positive()).min(1).max(20),
 });
 
 export const movementSchema = z.object({

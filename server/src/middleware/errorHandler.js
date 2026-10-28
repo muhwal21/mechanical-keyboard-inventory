@@ -19,6 +19,9 @@ export function errorHandler(error, req, res, next) {
   if (error instanceof ValidationError) {
     return res.status(400).json({ message: 'Data tidak memenuhi validasi.' });
   }
+  if (error.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Ukuran file terlalu besar (maksimal 2 MB).' });
+  }
   if (Number.isInteger(error.status) && error.status >= 400 && error.status < 500) {
     return res.status(error.status).json({ message: error.message });
   }

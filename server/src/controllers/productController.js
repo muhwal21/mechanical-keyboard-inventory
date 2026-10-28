@@ -1,5 +1,6 @@
 import { Op, literal } from 'sequelize';
-import { Category, Product, Supplier } from '../models/index.js';
+import { Category, Product, ProductImage, StockMovement, Supplier, User } from '../models/index.js';
+import { serializeImage } from './productImageController.js';
 
 const productIncludes = [
   { model: Category, as: 'category', attributes: ['id', 'name', 'slug'] },
@@ -73,6 +74,32 @@ export async function deleteProduct(req, res, next) {
     if (!product || !product.is_active) return res.status(404).json({ message: 'Produk tidak ditemukan.' });
     await product.update({ is_active: false });
     return res.status(204).end();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// Detail for the product dialog: relations, ordered photos, and the latest movements.
+export async function getProduct(req, res, next) {
+  try {
+    const product = await Product.findByPk(Number(req.params.id), {
+      include: [
+        ...productIncludes,
+        { model: ProductImage, as: 'images' },
+      ],
+      order: [[{ model: ProductImage, as: 'images' }, 'sort_order', 'ASC'], [{ model: ProductImage, as: 'images' }, 'id', 'ASC']],
+    });
+    if (!product || !product.is_active) return res.status(404).json({ message: 'Produk tidak ditemukan.' });
+
+    const movements = await StockMovement.findAll({
+      where: { product_id: product.id },
+      include: [{ model: User, as: 'user', attributes: ['id', 'name'] }],
+      order: [['created_at', 'DESC'], ['id', 'DESC']],
+      limit: 8,
+    });
+    const data = product.toJSON();
+    data.images = product.images.map(serializeImage);
+    return res.json({ product: data, movements });
   } catch (error) {
     return next(error);
   }

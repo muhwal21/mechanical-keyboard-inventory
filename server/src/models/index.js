@@ -74,12 +74,31 @@ export const StockMovement = sequelize.define('StockMovement', {
   note: { type: DataTypes.STRING(500), allowNull: true },
 }, { tableName: 'stock_movements', updatedAt: false, indexes: [{ fields: ['product_id', 'created_at'] }, { fields: ['user_id', 'created_at'] }] });
 
+// Product photos for the gallery. Uploaded files are stored in MySQL (LONGBLOB) so they
+// survive redeploys on hosts with an ephemeral disk; seeded photos only keep a URL.
+export const ProductImage = sequelize.define('ProductImage', {
+  id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  product_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  url: { type: DataTypes.STRING(1000), allowNull: true },
+  data: { type: DataTypes.BLOB('long'), allowNull: true },
+  mime_type: { type: DataTypes.STRING(40), allowNull: true },
+  byte_size: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+  sort_order: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+}, {
+  tableName: 'product_images',
+  updatedAt: false,
+  indexes: [{ fields: ['product_id', 'sort_order'] }],
+  defaultScope: { attributes: { exclude: ['data'] } },
+});
+
 Category.hasMany(Product, { foreignKey: 'category_id', as: 'products', onDelete: 'RESTRICT' });
 Product.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
 Supplier.hasMany(Product, { foreignKey: 'supplier_id', as: 'products', onDelete: 'SET NULL' });
 Product.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier', onDelete: 'SET NULL' });
 Product.hasMany(StockMovement, { foreignKey: 'product_id', as: 'movements', onDelete: 'RESTRICT' });
 StockMovement.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+Product.hasMany(ProductImage, { foreignKey: 'product_id', as: 'images', onDelete: 'CASCADE' });
+ProductImage.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 User.hasMany(StockMovement, { foreignKey: 'user_id', as: 'movements', onDelete: 'RESTRICT' });
 StockMovement.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 

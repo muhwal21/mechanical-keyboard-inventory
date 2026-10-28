@@ -84,7 +84,7 @@ const productForm = reactive({
   sku: '', name: '', brand: '', category_id: '', supplier_id: '', description: '',
   price_min: '', price_max: '', purchase_price: '', selling_price: '', currency: 'IDR',
   listing_status: 'Ready', reorder_point: 10, storage_location: '', source_url: '',
-  image_url: '', specifications: {}, variants: [], is_active: true,
+  specifications: {}, variants: [], is_active: true,
 });
 const supplierForm = reactive({
   name: '', contact_person: '', phone: '', email: '', city: '', website: '', notes: '', is_active: true,
@@ -459,7 +459,7 @@ function resetProductForm() {
     supplier_id: suppliers.value.find((supplier) => supplier.is_active)?.id ?? '', description: '',
     price_min: '', price_max: '', purchase_price: '', selling_price: '', currency: 'IDR',
     listing_status: 'Ready', reorder_point: 10, storage_location: '', source_url: '',
-    image_url: '', specifications: {}, variants: [], is_active: true,
+    specifications: {}, variants: [], is_active: true,
   });
 }
 
@@ -489,7 +489,6 @@ function openEditProduct(product) {
     reorder_point: product.reorder_point,
     storage_location: product.storage_location ?? '',
     source_url: product.source_url ?? '',
-    image_url: product.image_url ?? '',
     specifications: product.specifications ?? {},
     variants: product.variants ?? [],
     is_active: product.is_active,
@@ -1167,10 +1166,9 @@ onMounted(async () => {
               </div>
             </fieldset>
             <fieldset class="form-section">
-              <legend>Deskripsi &amp; gambar</legend>
+              <legend>Deskripsi</legend>
               <div class="form-grid">
                 <label class="full-field" :class="{ invalid: fieldErrors.description }">Deskripsi / spesifikasi<textarea v-model="productForm.description" rows="3" maxlength="5000" placeholder="Layout, tipe switch, koneksi, atau detail lain"></textarea><small v-if="fieldErrors.description" class="field-error">{{ fieldErrors.description }}</small></label>
-                <label class="full-field" :class="{ invalid: fieldErrors.image_url }">URL gambar atau path lokal<input v-model="productForm.image_url" type="text" placeholder="https://... atau /images/nama-produk.jpg" /><small v-if="fieldErrors.image_url" class="field-error">{{ fieldErrors.image_url }}</small></label>
               </div>
             </fieldset>
             <details class="form-section optional-section" :open="Boolean(fieldErrors.source_url || fieldErrors.price_max || fieldErrors.price_min || fieldErrors.listing_status)">
