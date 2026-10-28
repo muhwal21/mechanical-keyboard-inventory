@@ -1,12 +1,14 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watchEffect } from 'vue';
 import {
-  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, Boxes, Building2,
-  Check, ChevronDown, CircleDollarSign, ExternalLink, History, Keyboard,
-  LayoutDashboard, LogOut, Mail, MapPin, Package, Phone, Plus, Search,
-  Settings, ShieldCheck, Truck, X, Moon, Sun, Users, UserCheck, UserX,
+  AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowUpFromLine, ArrowUpRight, Boxes, Building2,
+  Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, History, Keyboard,
+  LayoutDashboard, LogOut, Mail, MapPin, Moon, Package, PackageX, Phone, Plus, RefreshCw, Search,
+  Settings, ShieldCheck, Sun, TrendingDown, TrendingUp, Truck, UserCheck, UserX, Users, X,
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
+import ActivityHeatmap from './components/ActivityHeatmap.vue';
+import RackMap from './components/RackMap.vue';
 
 const user = ref(null);
 function readThemePreference() {
@@ -44,7 +46,13 @@ const busy = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const csrfToken = ref('');
-const dashboard = ref({ summary: {}, categories: [], lowStockProducts: [], movementTrend: [], recentMovements: [] });
+const dashboard = ref({ summary: {}, categories: [], lowStockProducts: [], activity: [], movementTrend: [], recentMovements: [] });
+// Overview widgets
+const heatmapDays = ref(14);
+const overviewProductId = ref('');
+const activityFilter = ref('');
+const activityPage = ref(1);
+const ACTIVITY_PAGE_SIZE = 8;
 const products = ref([]); // rows shown in the product table (may be filtered)
 const catalog = ref([]); // every active product, used by dropdowns and counts
 const categories = ref([]);
@@ -108,6 +116,10 @@ const roleRules = [
   { action: 'Mengubah peran dan menonaktifkan pengguna', admin: true, staff: false },
 ];
 
+watchEffect(() => {
+  document.title = user.value ? `${pageTitle.value} · KeyStock` : 'KeyStock — Mechanical Keyboard Inventory';
+});
+
 const today = new Intl.DateTimeFormat('id-ID', {
   weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
 }).format(new Date());
@@ -152,6 +164,98 @@ const filteredMovements = computed(() => {
       .some((value) => value?.toLowerCase().includes(term));
   });
 });
+
+const overviewProduct = computed(() => (
+  catalog.value.find((product) => String(product.id) === String(overviewProductId.value)) ?? null
+));
+
+const overviewProductMovements = computed(() => (
+  movements.value.filter((item) => String(item.product?.id ?? item.product_id) === String(overviewProductId.value))
+));
+const overviewLastMovement = computed(() => overviewProductMovements.value[0] ?? null);
+
+const activityFilters = [
+  { id: '', label: 'Semua' },
+  { id: 'IN', label: 'Masuk' },
+  { id: 'OUT', label: 'Keluar' },
+  { id: 'ADJUSTMENT', label: 'Penyesuaian' },
+];
+
+const overviewActivities = computed(() => (
+  activityFilter.value ? movements.value.filter((item) => item.movement_type === activityFilter.value) : movements.value
+));
+
+const activityPageCount = computed(() => Math.max(1, Math.ceil(overviewActivities.value.length / ACTIVITY_PAGE_SIZE)));
+
+const pagedActivities = computed(() => {
+  const start = (activityPage.value - 1) * ACTIVITY_PAGE_SIZE;
+  return overviewActivities.value.slice(start, start + ACTIVITY_PAGE_SIZE);
+});
+
+const activityRange = computed(() => {
+  const total = overviewActivities.value.length;
+  if (!total) return '0 dari 0';
+  const start = (activityPage.value - 1) * ACTIVITY_PAGE_SIZE + 1;
+  return `${start}–${Math.min(total, start + ACTIVITY_PAGE_SIZE - 1)} dari ${total}`;
+});
+
+function setActivityFilter(id) {
+  activityFilter.value = id;
+  activityPage.value = 1;
+}
+
+// Keep the product-detail card pointed at a real product: prefer the most urgent restock item.
+function ensureOverviewProduct() {
+  const exists = catalog.value.some((product) => String(product.id) === String(overviewProductId.value));
+  if (exists) return;
+  const first = dashboard.value.lowStockProducts?.[0] ?? catalog.value[0];
+  overviewProductId.value = first ? String(first.id) : '';
+}
+
+function openProductInList(product) {
+  if (!product) return;
+  searchQuery.value = product.sku;
+  selectedCategory.value = '';
+  stockFilter.value = 'all';
+  navigate('products');
+}
+
+function focusProductSearch() {
+  navigate('products').then(() => nextTick(() => document.querySelector('.table-toolbar input[type="search"]')?.focus()));
+}
+
+async function refreshDashboard() {
+  await loadAll();
+  if (!errorMessage.value) showSuccess('Data stok diperbarui.');
+}
+
+function movementCode(item) {
+  return `#MV-${String(item.id).padStart(4, '0')}`;
+}
+
+// Export the active catalog as CSV. Cells that start with = + - @ are prefixed with a
+// quote so spreadsheet apps do not run them as formulas (CSV injection).
+function exportInventoryCsv() {
+  const header = ['SKU', 'Nama produk', 'Brand', 'Kategori', 'Supplier', 'Lokasi rak', 'Stok', 'Batas minimum', 'Kondisi', 'Harga beli', 'Harga jual', 'Mata uang'];
+  const rows = catalog.value.map((product) => [
+    product.sku, product.name, product.brand, product.category?.name ?? '', product.supplier?.name ?? '',
+    product.storage_location ?? '', product.warehouse_stock, product.reorder_point, stockState(product).label,
+    product.purchase_price ?? '', product.selling_price ?? '', product.currency,
+  ]);
+  const escapeCell = (value) => {
+    let text = String(value ?? '');
+    if (/^[=+\-@]/.test(text)) text = `'${text}`;
+    return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const csv = [header, ...rows].map((row) => row.map(escapeCell).join(',')).join('\n');
+  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `keystock-stok-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showSuccess(`${rows.length} produk diekspor ke CSV.`);
+}
 
 function clearNotices() {
   errorMessage.value = '';
@@ -206,6 +310,8 @@ async function loadAll({ clear = true } = {}) {
     products.value = (filteredData ?? catalogData).products;
     suppliers.value = supplierData.suppliers;
     movements.value = movementData.movements;
+    ensureOverviewProduct();
+    if (activityPage.value > activityPageCount.value) activityPage.value = 1;
   } catch (error) {
     if (error.message.includes('API belum tersambung')) apiUnavailable.value = true;
     handleError(error);
@@ -649,20 +755,6 @@ function formatDate(date) {
   }).format(parsed);
 }
 
-function formatTrendDay(value) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Intl.DateTimeFormat('id-ID', { weekday: 'short' }).format(new Date(year, month - 1, day));
-}
-
-function trendSegmentStyle(count, total) {
-  return { height: total ? `${(count / total) * 100}%` : '0%' };
-}
-
-function trendHeight(total) {
-  const max = Math.max(1, ...(dashboard.value.movementTrend ?? []).map((day) => day.total));
-  return `${total ? Math.max(8, (total / max) * 100) : 0}%`;
-}
-
 function productsForSupplier(supplierId) {
   return catalog.value.filter((product) => Number(product.supplier_id) === Number(supplierId)).length;
 }
@@ -764,105 +856,149 @@ onMounted(async () => {
   </div>
 
   <div v-else class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#" @click.prevent="navigate('overview')">
-        <span class="brand-mark"><Keyboard :size="21" /></span>
-        <span><strong>KEYSTOCK</strong><small>INVENTORY WORKSPACE</small></span>
+    <header class="app-header">
+      <a class="brand" href="#" aria-label="KeyStock — ringkasan" @click.prevent="navigate('overview')">
+        <span class="brand-mark"><Keyboard :size="18" /></span>
+        <strong>KeyStock</strong>
       </a>
-
-      <div class="side-label">WORKSPACE</div>
-      <nav class="side-nav" aria-label="Navigasi inventaris">
-        <button v-for="item in navItems" :key="item.id" class="nav-item" :class="{ active: activePage === item.id }" :aria-current="activePage === item.id ? 'page' : undefined" @click="navigate(item.id)">
-          <component :is="item.icon" :size="18" :stroke-width="1.8" />
+      <nav class="top-nav" aria-label="Navigasi inventaris">
+        <button v-for="item in navItems" :key="item.id" type="button" class="nav-item" :class="{ active: activePage === item.id }" :aria-current="activePage === item.id ? 'page' : undefined" @click="navigate(item.id)">
+          <component :is="item.icon" class="nav-icon" :size="18" :stroke-width="1.8" />
           <span class="nav-label">{{ item.label }}</span>
           <span class="nav-short">{{ item.short }}</span>
-          <span v-if="item.id === 'products'" class="nav-count">{{ dashboard.summary?.activeProducts ?? products.length }}</span>
-          <span v-if="item.id === 'suppliers'" class="nav-count">{{ suppliers.filter((supplier) => supplier.is_active).length }}</span>
         </button>
       </nav>
-
-      <div class="sidebar-note">
-        <span class="sidebar-note-icon"><Boxes :size="17" /></span>
-        <div><strong>Stok internal</strong><span>Perubahan dicatat manual</span></div>
-        <span class="connection-dot"></span>
+      <div class="header-actions">
+        <button class="round-button hide-mobile" type="button" title="Cari produk" aria-label="Cari produk" @click="focusProductSearch"><Search :size="17" /></button>
+        <button class="round-button" type="button" :title="themeMode === 'dark' ? 'Mode terang' : 'Mode gelap'" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="17" /><Moon v-else :size="17" /></button>
+        <div class="user-chip">
+          <div class="avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div>
+          <div class="user-meta"><strong>{{ user.name }}</strong><span>{{ user.role === 'admin' ? 'Administrator' : 'Staff inventaris' }}</span></div>
+        </div>
+        <button class="round-button" type="button" title="Keluar" aria-label="Keluar" :disabled="busy" @click="logout"><LogOut :size="17" /></button>
       </div>
-
-      <div class="user-card">
-        <div class="avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div>
-        <div class="user-meta"><strong>{{ user.name }}</strong><span>{{ user.role === 'admin' ? 'Administrator' : 'Staff inventaris' }}</span></div>
-        <button class="icon-button quiet" title="Keluar" aria-label="Keluar" :disabled="busy" @click="logout"><LogOut :size="17" /></button>
-      </div>
-    </aside>
+    </header>
 
     <main class="main-area">
-      <header class="topbar">
-        <a class="topbar-brand" href="#" aria-label="KeyStock — ringkasan" @click.prevent="navigate('overview')"><span class="brand-mark"><Keyboard :size="17" /></span><strong>KEYSTOCK</strong></a>
-        <div class="breadcrumb"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ pageTitle }}</strong></div>
-        <div class="top-actions"><button class="theme-toggle" type="button" :aria-label="themeMode === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'" @click="toggleTheme"><Sun v-if="themeMode === 'dark'" :size="16" /><Moon v-else :size="16" /><span>{{ themeMode === 'dark' ? 'Mode terang' : 'Mode gelap' }}</span></button><span class="today-label">{{ today }}</span><span class="top-divider"></span><div class="top-user"><div class="avatar small-avatar">{{ user.name?.slice(0, 1).toUpperCase() }}</div><span>{{ user.name }}</span></div><button class="icon-button subtle mobile-logout" title="Keluar" aria-label="Keluar" :disabled="busy" @click="logout"><LogOut :size="16" /></button></div>
-      </header>
-
       <div class="content-wrap">
         <div v-if="errorMessage" class="notice error-notice page-notice"><AlertTriangle :size="17" />{{ errorMessage }}<button class="icon-button quiet" @click="errorMessage = ''"><X :size="15" /></button></div>
         <div v-if="successMessage" class="notice success-notice page-notice"><Check :size="17" />{{ successMessage }}<button class="icon-button quiet" @click="successMessage = ''"><X :size="15" /></button></div>
 
         <template v-if="activePage === 'overview'">
-          <section class="page-heading">
-            <div><div class="eyebrow muted-eyebrow">INVENTORY OVERVIEW</div><h1>Ringkasan stok</h1><p>Pantau jumlah fisik, stok minimum, dan aktivitas gudang.</p></div>
-            <div class="heading-actions"><button class="button secondary" @click="navigate('products')"><Package :size="16" /> Lihat produk</button><button class="button primary" @click="openMovement()"><ArrowDownUp :size="16" /> Catat pergerakan</button></div>
+          <section class="page-head">
+            <div class="page-title"><h1>Ringkasan stok</h1><p>Stok real-time keyboard dan aksesori di gudang utama.</p></div>
+            <div class="kpi-row">
+              <article class="kpi-chip">
+                <span class="kpi-icon"><Boxes :size="18" /></span>
+                <div><small>Total unit stok</small><strong>{{ formatNumber(dashboard.summary?.totalStock) }}</strong></div>
+                <span class="kpi-delta" :class="(dashboard.summary?.weeklyNetChange ?? 0) >= 0 ? 'up' : 'down'"><component :is="(dashboard.summary?.weeklyNetChange ?? 0) >= 0 ? TrendingUp : TrendingDown" :size="13" />{{ (dashboard.summary?.weeklyNetChange ?? 0) >= 0 ? '+' : '' }}{{ formatNumber(dashboard.summary?.weeklyNetChange) }} / 7 hari</span>
+              </article>
+              <article class="kpi-chip">
+                <span class="kpi-icon"><AlertTriangle :size="18" /></span>
+                <div><small>Perlu restock</small><strong>{{ formatNumber(dashboard.summary?.lowStockCount) }}</strong></div>
+                <span class="kpi-delta" :class="dashboard.summary?.lowStockCount ? 'warn' : 'up'">dari {{ formatNumber(dashboard.summary?.activeProducts) }} SKU</span>
+              </article>
+              <article class="kpi-chip">
+                <span class="kpi-icon"><PackageX :size="18" /></span>
+                <div><small>Stok habis</small><strong>{{ formatNumber(dashboard.summary?.outOfStockCount) }}</strong></div>
+                <span class="kpi-delta" :class="dashboard.summary?.outOfStockCount ? 'down' : 'up'">{{ dashboard.summary?.outOfStockCount ? 'segera isi ulang' : 'aman' }}</span>
+              </article>
+            </div>
           </section>
 
-          <section class="metric-grid">
-            <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-blue"><Package :size="18" /></span><span class="metric-caption">Jenis produk aktif</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.activeProducts) }}</div><div class="metric-foot">SKU tersimpan di katalog inventaris</div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-green"><Boxes :size="18" /></span><span class="metric-caption">Jumlah stok fisik</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.totalStock) }} <small>unit</small></div><div class="metric-foot">Saldo stok demo, dicatat lewat log</div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-icon icon-violet"><CircleDollarSign :size="18" /></span><span class="metric-caption">Nilai modal tercatat</span></div><div class="metric-value compact-value" :class="{ 'is-empty': dashboard.summary?.inventoryCost == null }">{{ formatMoney(dashboard.summary?.inventoryCost, 'IDR', '—') }}</div><div class="metric-foot">{{ dashboard.summary?.pricedPurchaseProducts ? `${formatNumber(dashboard.summary.pricedPurchaseProducts)} SKU dengan harga beli` : 'Isi harga beli produk untuk menghitung' }}</div></article>
-            <article class="metric-card alert-metric"><div class="metric-top"><span class="metric-icon icon-amber"><AlertTriangle :size="18" /></span><span class="metric-caption">Perlu perhatian</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.lowStockCount) }}</div><div class="metric-foot"><span>{{ formatNumber(dashboard.summary?.outOfStockCount) }} produk habis</span><button class="text-link" @click="showLowStock">Tinjau <span>↗</span></button></div></article>
+          <section class="panel overview-toolbar">
+            <div class="toolbar-title"><span class="icon-box"><Package :size="18" /></span><div><strong>Inventory overview</strong><small>Hari ini — {{ today }}</small></div></div>
+            <button v-if="dashboard.summary?.lowStockCount" type="button" class="restock-alert" @click="showLowStock"><AlertTriangle :size="15" /> {{ formatNumber(dashboard.summary.lowStockCount) }} produk perlu restock</button>
+            <span v-else class="restock-alert is-ok"><Check :size="15" /> Semua stok di atas batas minimum</span>
+            <div class="toolbar-actions">
+              <button class="round-button" type="button" title="Unduh stok (CSV)" aria-label="Unduh stok (CSV)" @click="exportInventoryCsv"><Download :size="17" /></button>
+              <button class="button secondary pill" type="button" :disabled="loading" @click="refreshDashboard"><RefreshCw :size="15" :class="{ spinning: loading }" /> Muat ulang</button>
+              <button class="button primary pill" type="button" @click="openMovement()"><Plus :size="16" /> Catat pergerakan</button>
+            </div>
           </section>
 
-          <section class="dashboard-grid insight-grid">
-            <article class="panel trend-panel">
-              <div class="panel-heading"><div><div class="panel-kicker">MOVEMENT ANALYTICS</div><h2>Aktivitas stok</h2><p>Jumlah transaksi inventaris selama tujuh hari terakhir.</p></div><span class="period-tag">7 hari</span></div>
-              <div class="trend-legend"><span><i class="legend-in"></i>Masuk</span><span><i class="legend-out"></i>Keluar</span><span><i class="legend-adjustment"></i>Penyesuaian</span></div>
-              <div class="trend-chart" role="img" aria-label="Grafik transaksi stok tujuh hari terakhir">
-                <div v-for="day in dashboard.movementTrend" :key="day.date" class="trend-column">
-                  <strong>{{ day.total }}</strong>
-                  <div class="trend-track"><div class="trend-bar-stack" :style="{ height: trendHeight(day.total) }"><i class="trend-adjustment" :style="trendSegmentStyle(day.adjustment, day.total)"></i><i class="trend-out" :style="trendSegmentStyle(day.out, day.total)"></i><i class="trend-in" :style="trendSegmentStyle(day.in, day.total)"></i></div></div>
-                  <small>{{ formatTrendDay(day.date) }}</small>
+          <section class="overview-grid">
+            <article class="panel analytic-card">
+              <div class="card-head">
+                <h2>Aktivitas stok</h2>
+                <div class="segmented" role="tablist" aria-label="Periode heatmap">
+                  <button v-for="days in [7, 14, 30]" :key="days" type="button" role="tab" :aria-selected="heatmapDays === days" :class="{ active: heatmapDays === days }" @click="heatmapDays = days">{{ days }} hari</button>
                 </div>
+                <button class="round-button small" type="button" title="Buka riwayat stok" aria-label="Buka riwayat stok" @click="navigate('movements')"><ArrowUpRight :size="16" /></button>
               </div>
-              <div class="trend-foot"><span>{{ formatNumber(dashboard.movementTrend?.reduce((sum, day) => sum + day.total, 0)) }} transaksi tercatat</span><span class="trend-data-note">Dihitung dari log stok, bukan data penjualan</span></div>
+              <div class="stat-trio">
+                <div><strong>{{ formatNumber(dashboard.summary?.stockStats?.min) }}<ArrowUpRight :size="15" /></strong><span>Stok terendah</span></div>
+                <div><strong>{{ formatNumber(dashboard.summary?.stockStats?.avg) }}<ArrowUpRight :size="15" /></strong><span>Rata-rata stok</span></div>
+                <div><strong>{{ formatNumber(dashboard.summary?.stockStats?.max) }}<ArrowUpRight :size="15" /></strong><span>Stok tertinggi</span></div>
+              </div>
+              <ActivityHeatmap :activity="dashboard.activity ?? []" :days="heatmapDays" />
             </article>
 
-            <article class="panel category-panel">
-              <div class="panel-heading"><div><div class="panel-kicker">STOCK MIX</div><h2>Produk per kategori</h2><p>SKU aktif dalam katalog inventaris.</p></div></div>
-              <div class="category-chart"><div v-for="(category, index) in categories" :key="category.id" class="category-bar-row"><div class="bar-label"><span class="category-dot" :class="`dot-${category.slug}`"></span><span>{{ category.name }}</span><strong>{{ category.product_count ?? 0 }}</strong></div><div class="bar-track"><span :class="`bar-${index % 5}`" :style="{ width: `${Math.max(3, ((category.product_count ?? 0) / Math.max(1, dashboard.summary?.activeProducts ?? 1)) * 100)}%` }"></span></div></div></div>
-              <div class="category-foot"><span><span class="legend-square"></span> SKU aktif</span><strong>{{ categories.length }} kategori</strong></div>
-              <div class="source-note"><ShieldCheck :size="15" /><span>Harga modal hanya dihitung untuk SKU yang memiliki harga beli.</span></div>
+            <article class="panel history-card">
+              <div class="card-head"><h2>Detail produk</h2><button class="round-button small" type="button" title="Buka di daftar produk" aria-label="Buka di daftar produk" @click="openProductInList(overviewProduct)"><ArrowUpRight :size="16" /></button></div>
+              <div v-if="overviewProduct" class="history-inner">
+                <label class="item-select"><span>Item ID:</span><select v-model="overviewProductId" aria-label="Pilih produk"><option v-for="product in catalog" :key="product.id" :value="String(product.id)">#{{ product.sku }}</option></select><ChevronDown :size="15" /></label>
+                <p class="history-name">{{ overviewProduct.name }}</p>
+                <dl class="kv-list">
+                  <div><dt>Lokasi rak</dt><dd>{{ overviewProduct.storage_location || '—' }} · Gudang utama</dd></div>
+                  <div><dt>Pergerakan terakhir</dt><dd>{{ overviewLastMovement ? formatDate(overviewLastMovement.createdAt ?? overviewLastMovement.created_at) : '—' }}</dd></div>
+                  <div><dt>Kategori</dt><dd>{{ overviewProduct.category?.name ?? '—' }} – {{ overviewProduct.brand }}</dd></div>
+                  <div><dt>Batas minimum</dt><dd>{{ formatNumber(overviewProduct.reorder_point) }} unit</dd></div>
+                  <div><dt>Sisa stok</dt><dd><span class="stock-count" :class="stockState(overviewProduct).tone">{{ formatNumber(overviewProduct.warehouse_stock) }} unit</span></dd></div>
+                </dl>
+              </div>
+              <div v-else class="empty-state compact-empty"><strong>Belum ada produk</strong></div>
+              <ul v-if="overviewProductMovements.length" class="mini-history" aria-label="Riwayat terakhir produk">
+                <li v-for="item in overviewProductMovements.slice(0, 3)" :key="item.id"><span class="status-pill" :class="`kind-${item.movement_type.toLowerCase()}`">{{ movementLabel(item.movement_type) }}</span><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong><small>{{ formatDate(item.createdAt ?? item.created_at) }}</small></li>
+              </ul>
+              <div v-if="overviewProduct" class="supplier-strip">
+                <div class="avatar">{{ (overviewProduct.supplier?.name ?? '?').slice(0, 1).toUpperCase() }}</div>
+                <div class="supplier-strip-name"><small>Supplier</small><strong>{{ overviewProduct.supplier?.name ?? 'Belum ditentukan' }}</strong></div>
+                <a class="round-button" :class="{ disabled: !overviewProduct.supplier?.email }" :href="overviewProduct.supplier?.email ? `mailto:${overviewProduct.supplier.email}` : undefined" :title="overviewProduct.supplier?.email || 'Email supplier belum dicatat'" :aria-label="overviewProduct.supplier?.email ? `Email ${overviewProduct.supplier.name}` : 'Email supplier belum dicatat'"><Mail :size="16" /></a>
+                <a class="round-button solid" :class="{ disabled: !overviewProduct.supplier?.phone }" :href="overviewProduct.supplier?.phone ? `tel:${overviewProduct.supplier.phone}` : undefined" :title="overviewProduct.supplier?.phone || 'Telepon supplier belum dicatat'" :aria-label="overviewProduct.supplier?.phone ? `Telepon ${overviewProduct.supplier.name}` : 'Telepon supplier belum dicatat'"><Phone :size="16" /></a>
+              </div>
+            </article>
+
+            <article class="panel rack-card">
+              <div class="card-head"><h2>Peta rak</h2><span class="card-note">{{ catalog.filter((product) => product.storage_location).length }} lokasi</span></div>
+              <RackMap :products="catalog" :selected-id="overviewProductId" @select="(id) => { overviewProductId = String(id); }" />
+              <div class="rack-legend"><span><i class="good"></i>Aman</span><span><i class="low"></i>Restock</span><span><i class="empty"></i>Habis</span></div>
+              <div class="location-chip"><MapPin :size="15" /><div><small>Lokasi</small><strong>Gudang utama · Rak A</strong></div></div>
             </article>
           </section>
 
-          <section class="panel stock-panel stock-panel-wide">
-            <article>
-              <div class="panel-heading"><div><div class="panel-kicker">STOCK CONTROL</div><h2>Perlu restock</h2><p>Produk yang menyentuh atau melewati batas minimum.</p></div><button class="link-button" @click="showLowStock">Semua perhatian <span>↗</span></button></div>
-              <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat stok...</div>
-              <div v-else-if="dashboard.lowStockProducts?.length" class="attention-table-wrap"><table class="data-table attention-table stack-table"><thead><tr><th>PRODUK</th><th>SUPPLIER</th><th>LOKASI</th><th>SISA / MINIMUM</th><th></th></tr></thead><tbody>
-                <tr v-for="product in dashboard.lowStockProducts" :key="product.id"><td class="cell-primary"><div class="product-cell compact-product"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.sku }}</small></div></div></td><td data-label="Supplier">{{ product.supplier?.name ?? 'Belum dipilih' }}</td><td data-label="Lokasi">{{ product.storage_location || '—' }}</td><td data-label="Sisa / minimum"><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>/ {{ formatNumber(product.reorder_point) }}</small></span></td><td class="cell-actions"><button class="icon-button subtle" title="Catat stok masuk" aria-label="Catat stok masuk" @click="openMovement(product, 'IN')"><Plus :size="17" /></button></td></tr>
-              </tbody></table></div>
-              <div v-else class="empty-state compact-empty"><div class="empty-icon"><Check :size="21" /></div><strong>Belum ada stok di bawah minimum</strong><span>Daftar ini akan menampilkan produk saat jumlahnya perlu diisi ulang.</span></div>
-            </article>
-          </section>
-
-          <section class="panel recent-panel">
-            <div class="panel-heading"><div><div class="panel-kicker">MOVEMENT LOG</div><h2>Pergerakan stok terbaru</h2><p>Setiap perubahan saldo tersimpan bersama pengguna dan waktunya.</p></div><button class="link-button" @click="navigate('movements')">Buka riwayat <span>↗</span></button></div>
-            <div v-if="dashboard.recentMovements?.length" class="table-scroll"><table class="data-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>PERUBAHAN</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
-              <tr v-for="item in dashboard.recentMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Perubahan"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }} unit</strong><small class="cell-subtext">{{ formatNumber(item.stock_before) }} → {{ formatNumber(item.stock_after) }}</small></td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
+          <section class="panel activity-card">
+            <div class="card-head activity-head">
+              <h2>Aktivitas terbaru</h2>
+              <div class="pill-filters" role="tablist" aria-label="Filter aktivitas">
+                <button v-for="filter in activityFilters" :key="filter.id" type="button" role="tab" :aria-selected="activityFilter === filter.id" :class="{ active: activityFilter === filter.id }" @click="setActivityFilter(filter.id)">{{ filter.label }}</button>
+              </div>
+              <div class="pager">
+                <span>{{ activityRange }}</span>
+                <button class="round-button small" type="button" aria-label="Halaman sebelumnya" :disabled="activityPage <= 1" @click="activityPage -= 1"><ChevronLeft :size="16" /></button>
+                <button class="round-button small" type="button" aria-label="Halaman berikutnya" :disabled="activityPage >= activityPageCount" @click="activityPage += 1"><ChevronRight :size="16" /></button>
+              </div>
+            </div>
+            <div v-if="loading && !movements.length" class="loading-inline"><span class="spinner"></span> Memuat aktivitas...</div>
+            <div v-else-if="pagedActivities.length" class="table-scroll"><table class="data-table activity-table stack-table"><thead><tr><th>ID</th><th>Produk</th><th>Kategori</th><th>Stok</th><th>Lokasi</th><th>Waktu</th><th>Dicatat oleh</th><th>Jenis</th></tr></thead><tbody>
+              <tr v-for="item in pagedActivities" :key="item.id">
+                <td data-label="ID" class="mono-cell">{{ movementCode(item) }}</td>
+                <td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.sku }}</small></td>
+                <td data-label="Kategori">{{ item.product?.category?.name ?? '—' }}</td>
+                <td data-label="Stok"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }} unit</strong><small class="cell-subtext">{{ formatNumber(item.stock_before) }} → {{ formatNumber(item.stock_after) }}</small></td>
+                <td data-label="Lokasi">{{ item.product?.storage_location || '—' }}</td>
+                <td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td>
+                <td data-label="Dicatat oleh">{{ item.user?.name }}</td>
+                <td data-label="Jenis"><span class="status-pill" :class="`kind-${item.movement_type.toLowerCase()}`">{{ movementLabel(item.movement_type) }}</span></td>
+              </tr>
             </tbody></table></div>
-            <div v-else class="empty-state compact-empty"><div class="empty-icon"><History :size="21" /></div><strong>Belum ada catatan pergerakan</strong><span>Gunakan aksi stok masuk, stok keluar, atau penyesuaian.</span></div>
+            <div v-else class="empty-state compact-empty"><div class="empty-icon"><History :size="21" /></div><strong>Belum ada aktivitas</strong><span>Catat stok masuk, keluar, atau penyesuaian untuk mengisi daftar ini.</span></div>
           </section>
         </template>
 
         <template v-else-if="activePage === 'products'">
           <section class="page-heading">
-            <div><div class="eyebrow muted-eyebrow">PRODUCT & STOCK REGISTER</div><h1>Produk</h1><p>Kelola SKU, brand, supplier, harga, dan lokasi penyimpanan.</p></div>
+            <div><h1>Produk</h1><p>Kelola SKU, brand, supplier, harga, dan lokasi penyimpanan.</p></div>
             <div class="heading-actions"><button v-if="user.role === 'admin'" class="button primary" @click="openCreateProduct()"><Plus :size="16" /> Tambah produk</button></div>
           </section>
           <section class="product-stat-grid" aria-label="Ringkasan produk yang ditampilkan">
@@ -878,7 +1014,7 @@ onMounted(async () => {
               <select v-model="stockFilter" class="filter-select stock-filter" aria-label="Filter kondisi stok" @change="applyProductFilters"><option value="all">Semua stok</option><option value="low">Perlu restock</option></select>
             </div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat produk...</div>
-            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table stack-table"><thead><tr><th>PRODUK</th><th>SUPPLIER / KONTAK</th><th>HARGA BELI / JUAL</th><th>STOK</th><th>LOKASI</th><th>KONDISI</th><th>AKSI</th></tr></thead><tbody>
+            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table stack-table"><thead><tr><th>Produk</th><th>Supplier / kontak</th><th>Harga beli / jual</th><th>Stok</th><th>Lokasi</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>
               <tr v-for="product in filteredProducts" :key="product.id">
                 <td class="cell-primary"><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong :title="product.name">{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td>
                 <td data-label="Supplier"><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td>
@@ -896,7 +1032,7 @@ onMounted(async () => {
 
         <template v-else-if="activePage === 'suppliers'">
           <section class="page-heading">
-            <div><div class="eyebrow muted-eyebrow">PURCHASING CONTACTS</div><h1>Supplier</h1><p>Catat toko atau distributor tempat produk diperoleh. Brand produk dikelola terpisah.</p></div>
+            <div><h1>Supplier</h1><p>Catat toko atau distributor tempat produk diperoleh. Brand produk dikelola terpisah.</p></div>
             <div class="heading-actions"><button v-if="user.role === 'admin'" class="button primary" @click="openCreateSupplier()"><Plus :size="16" /> Tambah supplier</button></div>
           </section>
           <section class="supplier-summary-grid"><article class="supplier-summary-card"><span class="supplier-summary-icon"><Truck :size="17" /></span><div><small>Supplier aktif</small><strong>{{ suppliers.filter((supplier) => supplier.is_active).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon contact-icon"><Building2 :size="17" /></span><div><small>Produk dengan supplier</small><strong>{{ catalog.filter((product) => product.supplier_id).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon warning-icon"><AlertTriangle :size="17" /></span><div><small>Kontak perlu dilengkapi</small><strong>{{ suppliers.filter((supplier) => supplier.is_active && !supplier.phone && !supplier.email).length }}</strong></div></article></section>
@@ -912,7 +1048,7 @@ onMounted(async () => {
 
         <template v-else-if="activePage === 'users'">
           <section class="page-heading">
-            <div><div class="eyebrow muted-eyebrow">ACCESS CONTROL</div><h1>Pengguna</h1><p>Atur peran admin/staff dan nonaktifkan akun yang tidak lagi dipakai.</p></div>
+            <div><h1>Pengguna</h1><p>Atur peran admin/staff dan nonaktifkan akun yang tidak lagi dipakai.</p></div>
           </section>
           <section class="supplier-summary-grid">
             <article class="supplier-summary-card"><span class="supplier-summary-icon"><UserCheck :size="17" /></span><div><small>Pengguna aktif</small><strong>{{ users.filter((entry) => entry.is_active).length }}</strong></div></article>
@@ -921,7 +1057,7 @@ onMounted(async () => {
           </section>
           <section class="panel table-panel">
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat pengguna...</div>
-            <div v-else class="table-scroll"><table class="data-table user-table stack-table"><thead><tr><th>PENGGUNA</th><th>PERAN</th><th>STATUS</th><th>CATATAN STOK</th><th>BERGABUNG</th><th>AKSI</th></tr></thead><tbody>
+            <div v-else class="table-scroll"><table class="data-table user-table stack-table"><thead><tr><th>Pengguna</th><th>Peran</th><th>Status</th><th>Catatan stok</th><th>Bergabung</th><th>Aksi</th></tr></thead><tbody>
               <tr v-for="entry in users" :key="entry.id" :class="{ 'is-inactive': !entry.is_active }">
                 <td class="cell-primary"><div class="user-cell"><div class="avatar">{{ entry.name?.slice(0, 1).toUpperCase() }}</div><div><strong>{{ entry.name }} <span v-if="entry.id === user.id" class="you-tag">Anda</span></strong><small>{{ entry.email }}</small></div></div></td>
                 <td data-label="Peran"><select class="filter-select role-select" :value="entry.role" :disabled="busy || entry.id === user.id" :aria-label="`Peran ${entry.name}`" @change="changeUserRole(entry, $event.target.value)"><option value="admin">Admin</option><option value="staff">Staff</option></select></td>
@@ -935,7 +1071,7 @@ onMounted(async () => {
           </section>
           <section class="panel access-panel">
             <div class="panel-heading"><div><div class="panel-kicker">ROLE-BASED ACCESS</div><h2>Rincian hak akses</h2><p>Aturan ini diterapkan di server lewat middleware <code>requireRole</code>, bukan hanya disembunyikan di tampilan.</p></div></div>
-            <div class="table-scroll"><table class="data-table access-table"><thead><tr><th>AKSI</th><th>ADMIN</th><th>STAFF</th></tr></thead><tbody>
+            <div class="table-scroll"><table class="data-table access-table"><thead><tr><th>Aksi</th><th>Admin</th><th>Staff</th></tr></thead><tbody>
               <tr v-for="rule in roleRules" :key="rule.action"><td>{{ rule.action }}</td><td><span class="access-mark" :class="rule.admin ? 'yes' : 'no'">{{ rule.admin ? 'Boleh' : 'Tidak' }}</span></td><td><span class="access-mark" :class="rule.staff ? 'yes' : 'no'">{{ rule.staff ? 'Boleh' : 'Tidak' }}</span></td></tr>
             </tbody></table></div>
           </section>
@@ -943,14 +1079,14 @@ onMounted(async () => {
 
         <template v-else>
           <section class="page-heading">
-            <div><div class="eyebrow muted-eyebrow">INVENTORY AUDIT TRAIL</div><h1>Pergerakan stok</h1><p>Riwayat stok masuk, stok keluar, dan penyesuaian.</p></div>
+            <div><h1>Pergerakan stok</h1><p>Riwayat stok masuk, stok keluar, dan penyesuaian.</p></div>
             <div class="heading-actions"><button class="button primary" @click="openMovement()"><Plus :size="16" /> Catat pergerakan</button></div>
           </section>
           <section class="panel movement-panel">
             <div class="panel-heading"><div><div class="panel-kicker">STOCK MOVEMENTS</div><h2>Riwayat inventaris</h2><p>{{ filteredMovements.length }} dari {{ movements.length }} catatan terbaru</p></div><div class="audit-tag"><History :size="15" /> Audit trail aktif</div></div>
             <div class="table-toolbar"><div class="search-field"><Search :size="17" /><input v-model="movementSearch" type="search" placeholder="Cari produk, SKU, pengguna, atau catatan..." aria-label="Cari riwayat stok" /><button v-if="movementSearch" class="clear-search" type="button" aria-label="Hapus pencarian" @click="movementSearch = ''"><X :size="14" /></button></div><select v-model="movementTypeFilter" class="filter-select" aria-label="Filter jenis pergerakan"><option value="">Semua aktivitas</option><option value="IN">Stok masuk</option><option value="OUT">Stok keluar</option><option value="ADJUSTMENT">Penyesuaian</option></select></div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat riwayat...</div>
-            <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>STOK SEBELUM / SESUDAH</th><th>JUMLAH</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
+            <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>Aktivitas</th><th>Produk</th><th>Stok sebelum / sesudah</th><th>Jumlah</th><th>Dicatat oleh</th><th>Waktu</th><th>Catatan</th></tr></thead><tbody>
               <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>{{ movements.length ? 'Tidak ada catatan yang cocok' : 'Belum ada riwayat' }}</strong><span>{{ movements.length ? 'Ubah kata pencarian atau filter aktivitas.' : 'Setiap perubahan saldo akan dicatat di halaman ini.' }}</span></div>
