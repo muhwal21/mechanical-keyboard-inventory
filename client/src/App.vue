@@ -11,10 +11,12 @@ import { get, post, put, remove, setCsrfToken } from './api.js';
 const user = ref(null);
 function readThemePreference() {
   try {
-    return localStorage.getItem('keystock-theme') === 'dark' ? 'dark' : 'light';
+    const saved = localStorage.getItem('keystock-theme');
+    if (saved === 'dark' || saved === 'light') return saved;
   } catch {
-    return 'light';
+    // Browser storage can be blocked; fall back to the system preference below.
   }
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 const themeMode = ref(readThemePreference());
