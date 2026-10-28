@@ -66,7 +66,9 @@ const editingSupplier = ref(null);
 const formError = ref('');
 const fieldErrors = ref({});
 
+const authMode = ref('login'); // 'login' or 'register'
 const loginForm = reactive({ email: '', password: '' });
+const registerForm = reactive({ name: '', email: '', password: '', password_confirmation: '' });
 const productForm = reactive({
   sku: '', name: '', brand: '', category_id: '', supplier_id: '', description: '',
   price_min: '', price_max: '', purchase_price: '', selling_price: '', currency: 'IDR',
@@ -264,6 +266,35 @@ async function submitLogin() {
     await loadAll();
   } catch (error) {
     handleError(error);
+  } finally {
+    busy.value = false;
+  }
+}
+
+function switchAuthMode(mode) {
+  authMode.value = mode;
+  clearNotices();
+  clearFormErrors();
+}
+
+async function submitRegister() {
+  busy.value = true;
+  clearNotices();
+  clearFormErrors();
+  try {
+    if (!csrfToken.value) await refreshCsrf();
+    const result = await post('/auth/register', registerForm);
+    user.value = result.user;
+    csrfToken.value = result.csrfToken;
+    setCsrfToken(result.csrfToken);
+    Object.assign(registerForm, { name: '', email: '', password: '', password_confirmation: '' });
+    authMode.value = 'login';
+    apiUnavailable.value = false;
+    await loadAll();
+    showSuccess(`Akun dibuat. Selamat datang, ${result.user.name} — Anda masuk sebagai staff.`);
+  } catch (error) {
+    errorMessage.value = error.message || 'Pendaftaran gagal. Coba lagi.';
+    fieldErrors.value = error.fields ?? {};
   } finally {
     busy.value = false;
   }
@@ -630,16 +661,39 @@ onMounted(async () => {
       </div>
       <div class="auth-content">
         <div class="eyebrow"><span class="eyebrow-dot"></span> MECHANICAL KEYBOARD STOCKROOM</div>
-        <h1>Kelola stok<br />dengan jelas.</h1>
-        <p>Pantau produk, harga, supplier, dan pergerakan stok dari satu tempat.</p>
-        <div v-if="errorMessage" class="notice error-notice"><AlertTriangle :size="17" />{{ errorMessage }}</div>
-        <form class="login-form" @submit.prevent="submitLogin">
+        <h1 v-if="authMode === 'login'">Kelola stok<br />dengan jelas.</h1>
+        <h1 v-else>Buat akun<br />staff gudang.</h1>
+        <p>{{ authMode === 'login' ? 'Pantau produk, harga, supplier, dan pergerakan stok dari satu tempat.' : 'Akun baru berperan sebagai staff. Admin dapat mengubah peran dari halaman Pengguna.' }}</p>
+        <div class="auth-tabs" role="tablist" aria-label="Pilih masuk atau daftar">
+          <button type="button" role="tab" :aria-selected="authMode === 'login'" :class="{ active: authMode === 'login' }" @click="switchAuthMode('login')">Masuk</button>
+          <button type="button" role="tab" :aria-selected="authMode === 'register'" :class="{ active: authMode === 'register' }" @click="switchAuthMode('register')">Daftar akun</button>
+        </div>
+        <div v-if="errorMessage" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ errorMessage }}</div>
+        <form v-if="authMode === 'login'" class="login-form" @submit.prevent="submitLogin">
           <label for="email">Email</label>
-          <input id="email" v-model="loginForm.email" type="email" autocomplete="username" placeholder="admin@keystock.local" required />
+          <input id="email" v-model="loginForm.email" type="email" autocomplete="username" placeholder="nama@email.com" required />
           <label for="password">Kata sandi</label>
           <input id="password" v-model="loginForm.password" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required />
           <button class="button primary full" type="submit" :disabled="busy">
             {{ busy ? 'Memeriksa...' : 'Masuk ke inventaris' }}
+            <ChevronDown class="button-arrow" :size="17" />
+          </button>
+        </form>
+        <form v-else class="login-form" novalidate @submit.prevent="submitRegister">
+          <label for="register-name">Nama lengkap</label>
+          <input id="register-name" v-model="registerForm.name" :class="{ invalid: fieldErrors.name }" autocomplete="name" maxlength="120" placeholder="Nama Anda" required />
+          <small v-if="fieldErrors.name" class="field-error">{{ fieldErrors.name }}</small>
+          <label for="register-email">Email</label>
+          <input id="register-email" v-model="registerForm.email" :class="{ invalid: fieldErrors.email }" type="email" autocomplete="email" maxlength="190" placeholder="nama@email.com" required />
+          <small v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</small>
+          <label for="register-password">Kata sandi</label>
+          <input id="register-password" v-model="registerForm.password" :class="{ invalid: fieldErrors.password }" type="password" autocomplete="new-password" minlength="8" placeholder="Minimal 8 karakter, huruf dan angka" required />
+          <small v-if="fieldErrors.password" class="field-error">{{ fieldErrors.password }}</small>
+          <label for="register-confirmation">Ulangi kata sandi</label>
+          <input id="register-confirmation" v-model="registerForm.password_confirmation" :class="{ invalid: fieldErrors.password_confirmation }" type="password" autocomplete="new-password" placeholder="Ketik ulang kata sandi" required />
+          <small v-if="fieldErrors.password_confirmation" class="field-error">{{ fieldErrors.password_confirmation }}</small>
+          <button class="button primary full" type="submit" :disabled="busy">
+            {{ busy ? 'Membuat akun...' : 'Buat akun staff' }}
             <ChevronDown class="button-arrow" :size="17" />
           </button>
         </form>

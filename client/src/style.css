@@ -639,3 +639,12 @@ html:has(.modal-backdrop), body:has(.modal-backdrop) { overflow: hidden; }
 .stock-preview p { grid-column: 1 / -1; margin: 0; color: var(--accent-red); font-size: 11px; font-weight: 600; }
 .movement-panel .table-toolbar { margin-bottom: 6px; }
 .search-field input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+
+/* Login / register switch */
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0 0 18px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
+.auth-tabs button { min-height: 36px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; transition: .15s ease; }
+.auth-tabs button:hover { color: var(--ink-2); }
+.auth-tabs button.active { color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
+.auth-content .notice { margin-bottom: 4px; }
+.login-form input.invalid { border-color: var(--accent-red-border); box-shadow: 0 0 0 3px var(--accent-red-soft); }
+.login-form .field-error { margin-top: 6px; }

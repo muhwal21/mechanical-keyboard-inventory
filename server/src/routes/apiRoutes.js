@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, getCsrfToken, getCurrentUser, logout } from '../controllers/authController.js';
+import { login, getCsrfToken, getCurrentUser, logout, register } from '../controllers/authController.js';
 import { getDashboard } from '../controllers/dashboardController.js';
 import { createProduct, deleteProduct, listCategories, listProducts, updateProduct } from '../controllers/productController.js';
 import { archiveSupplier, createSupplier, listSuppliers, updateSupplier } from '../controllers/supplierController.js';
 import { createMovement, listMovements } from '../controllers/stockMovementController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
-import { loginSchema, movementSchema, productSchema, supplierSchema } from '../middleware/validators.js';
+import { loginSchema, movementSchema, productSchema, registerSchema, supplierSchema } from '../middleware/validators.js';
 
 const router = Router();
 const loginLimiter = rateLimit({
@@ -17,10 +17,18 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: 'Terlalu banyak percobaan login. Coba lagi beberapa menit.' },
 });
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { message: 'Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti.' },
+});
 
 router.get('/health', (req, res) => res.json({ status: 'ok' }));
 router.get('/auth/csrf', getCsrfToken);
 router.get('/auth/me', getCurrentUser);
+router.post('/auth/register', registerLimiter, validateBody(registerSchema), register);
 router.post('/auth/login', loginLimiter, validateBody(loginSchema), login);
 router.post('/auth/logout', requireAuth, logout);
 

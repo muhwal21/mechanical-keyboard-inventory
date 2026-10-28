@@ -44,6 +44,19 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Kata sandi wajib diisi.').max(200),
 });
 
+export const registerSchema = z.object({
+  name: plainText({ min: 2, max: 120, label: 'Nama' }),
+  email,
+  password: z.string()
+    .min(8, 'Kata sandi minimal 8 karakter.')
+    .max(200, 'Kata sandi maksimal 200 karakter.')
+    .regex(/[A-Za-z]/, 'Kata sandi harus mengandung huruf.')
+    .regex(/[0-9]/, 'Kata sandi harus mengandung angka.'),
+  password_confirmation: z.string(),
+}).refine((data) => data.password === data.password_confirmation, {
+  path: ['password_confirmation'], message: 'Konfirmasi kata sandi tidak sama.',
+});
+
 export const productSchema = z.object({
   sku: z.string().trim().min(2, 'SKU minimal 2 karakter.').max(100).regex(/^[A-Za-z0-9._-]+$/, 'SKU hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.'),
   name: plainText({ min: 2, max: 190, label: 'Nama produk' }),
