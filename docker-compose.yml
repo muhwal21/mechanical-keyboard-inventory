@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-local-root-password}
-      MYSQL_DATABASE: ${DB_NAME:-noirgear_inventory}
-      MYSQL_USER: ${DB_USER:-noirgear_app}
+      MYSQL_DATABASE: ${DB_NAME:-keyboard_inventory}
+      MYSQL_USER: ${DB_USER:-keyboard_inventory_app}
       MYSQL_PASSWORD: ${DB_PASSWORD:-local-app-password}
     ports:
       - "${DB_PORT:-3306}:3306"

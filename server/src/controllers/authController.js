@@ -51,7 +51,7 @@ export async function login(req, res, next) {
 export async function logout(req, res, next) {
   try {
     await sessionOperation(req, 'destroy');
-    res.clearCookie(process.env.SESSION_COOKIE_NAME ?? 'noirgear.sid', {
+    res.clearCookie(process.env.SESSION_COOKIE_NAME ?? 'keystock.sid', {
       httpOnly: true,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',

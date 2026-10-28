@@ -2,7 +2,7 @@
 
 ## Project case
 
-Noir Gear Inventory is a small warehouse inventory system for mechanical keyboards and related products. The owner can review stock, maintain a catalog, and record each stock change. Marketplace listing state is descriptive only; the MVP will not call marketplace APIs or claim automatic synchronization.
+KeyStock is a small warehouse inventory system for mechanical keyboards and related products. The owner can review stock, maintain a catalog, and record each stock change. Marketplace listing state is descriptive only; the MVP will not call marketplace APIs or claim automatic synchronization.
 
 The product source catalog contains 23 sample items across keyboards, switches, accessories, keycaps, and deskmats. Warehouse quantities will be clearly marked as simulated seed data.
 

@@ -1,5 +1,5 @@
 {
-  "name": "@noir-gear-inventory/server",
+  "name": "@mechanical-keyboard-inventory/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -6,7 +6,7 @@ try {
   await sequelize.authenticate();
   await sessionStore.onReady();
   const server = app.listen(config.port, () => {
-    console.log(`Noir Gear Inventory API listening on port ${config.port}`);
+    console.log(`KeyStock API listening on port ${config.port}`);
   });
 
   const shutdown = async () => {

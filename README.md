@@ -1,4 +1,4 @@
-# Noir Gear Inventory
+# KeyStock — Mechanical Keyboard Inventory
 
 Web app inventaris untuk keyboard mechanical dan aksesori. Project ini memakai Vue.js untuk antarmuka, Node.js dengan Express untuk API MVC, dan MySQL untuk penyimpanan relasional.
 
@@ -6,6 +6,7 @@ Web app inventaris untuk keyboard mechanical dan aksesori. Project ini memakai V
 
 - Melihat ringkasan stok dan produk yang perlu diisi ulang.
 - Mengelola katalog produk keyboard dan aksesori.
+- Memisahkan brand pembuat produk dari supplier, menyimpan kontak supplier, harga beli, harga jual, batas minimum, dan lokasi rak.
 - Mencatat stok masuk, stok keluar, dan penyesuaian stok beserta pengguna yang mencatatnya.
 - Membatasi akses melalui login dengan peran admin dan staff.
 - Menampilkan sumber marketplace sebagai referensi katalog; sinkronisasi API marketplace belum termasuk MVP.
@@ -46,7 +47,7 @@ docker-compose.yml       local MySQL service
 
 Jika ingin akun staff untuk demo role, isi ketiga variabel `SEED_STAFF_*`; biarkan semuanya kosong jika tidak diperlukan. Data stok seed bersifat simulasi. Login menggunakan `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` yang kamu isi di `.env`.
 
-Nilai stok awal adalah data simulasi untuk demo, bukan stok resmi Noir Gear. Kredensial admin demo akan disimpan di environment lokal dan tidak dikomit ke repository.
+Katalog contoh mengambil referensi produk dari Noir Gear dan Work Louder; nama-nama tersebut adalah brand atau sumber produk, bukan nama aplikasi. Nilai stok dan lokasi awal disimulasikan untuk demo. Harga listing hanya referensi; harga beli dan harga jual inventaris dibiarkan kosong sampai dicatat. Kredensial admin demo disimpan di environment lokal dan tidak dikomit ke repository.
 
 Gambar produk disimpan di `client/public/images/` untuk dipakai saat demo tanpa hotlink CDN. URL produk sumber tetap dicatat agar referensi katalog bisa diperiksa.
 

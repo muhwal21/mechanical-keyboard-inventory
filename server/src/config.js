@@ -20,7 +20,7 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173',
   sessionSecret: process.env.SESSION_SECRET,
-  sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'noirgear.sid',
+  sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'keystock.sid',
   database: {
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT ?? 3306),

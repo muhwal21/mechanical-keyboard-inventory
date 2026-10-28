@@ -48,7 +48,7 @@ for (const product of catalog.produk) {
   const result = spawnSync('curl', [
     '--fail', '--location', '--silent', '--show-error',
     '--max-time', '45', '--max-filesize', '15000000',
-    '--user-agent', 'NoirGearInventoryDemo/1.0',
+    '--user-agent', 'KeyStockInventoryDemo/1.0',
     '--output', filePath, source,
   ], { encoding: 'utf8' });
 
