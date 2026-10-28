@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import catalog from './catalog.json' with { type: 'json' };
-import { Category, Product, sequelize, StockMovement, User } from '../models/index.js';
+import { Category, Product, sequelize, StockMovement, Supplier, User } from '../models/index.js';
+import { migrateInventoryFields } from '../db/migrations.js';
 
 const categoryLabels = {
   keyboard: 'Keyboard',
@@ -11,7 +12,12 @@ const categoryLabels = {
   deskmat: 'Deskmats',
 };
 
-function productDefaults(source, categoryId, index) {
+const supplierSources = [
+  { host: 'www.noirgear.com', name: 'Noir Gear Official Store', website: 'https://www.noirgear.com' },
+  { host: 'worklouder.cc', name: 'Work Louder Official Store', website: 'https://worklouder.cc' },
+];
+
+function productDefaults(source, categoryId, supplierId, index) {
   const isUsd = source.harga_usd != null;
   const priceMin = source.harga_idr_min ?? source.harga_usd ?? null;
   const priceMax = source.harga_idr_max ?? source.harga_usd ?? null;
@@ -26,14 +32,18 @@ function productDefaults(source, categoryId, index) {
     category_id: categoryId,
     sku: source.id,
     name: source.nama,
-    brand: source.brand ?? 'Noir Gear',
+    brand: source.brand ?? 'Unknown brand',
     description: source.deskripsi ?? '',
     price_min: priceMin,
     price_max: priceMax,
+    purchase_price: null,
+    selling_price: priceMin,
     currency: isUsd ? 'USD' : 'IDR',
     listing_status: source.status ?? 'Ready',
     warehouse_stock: simulatedStock,
     reorder_point: 6,
+    storage_location: `A-${String(index + 1).padStart(2, '0')}`,
+    supplier_id: supplierId,
     source_url: source.url ?? source.url_sumber ?? null,
     image_url: localImageExtension ? `/images/${source.id}.${localImageExtension}` : null,
     specifications: specs,
@@ -51,12 +61,13 @@ async function seed() {
 
   await sequelize.authenticate();
   await sequelize.sync();
+  await migrateInventoryFields();
 
   const passwordHash = await bcrypt.hash(adminPassword, 12);
   const [admin] = await User.unscoped().findOrCreate({
     where: { email: adminEmail },
     defaults: {
-      name: process.env.SEED_ADMIN_NAME ?? 'Noir Gear Admin',
+      name: process.env.SEED_ADMIN_NAME ?? 'KeyStock Admin',
       email: adminEmail,
       password_hash: passwordHash,
       role: 'admin',
@@ -77,7 +88,7 @@ async function seed() {
     const [staff] = await User.unscoped().findOrCreate({
       where: { email: staffEmail },
       defaults: {
-      name: process.env.SEED_STAFF_NAME?.trim() || 'Noir Gear Staff',
+      name: process.env.SEED_STAFF_NAME?.trim() || 'Inventory Staff',
         email: staffEmail,
         password_hash: await bcrypt.hash(staffPassword, 12),
         role: 'staff',
@@ -85,6 +96,19 @@ async function seed() {
       },
     });
     await staff.update({ role: 'staff', is_active: true, name: process.env.SEED_STAFF_NAME?.trim() || staff.name });
+  }
+
+  const supplierIds = new Map();
+  for (const source of supplierSources) {
+    const [supplier] = await Supplier.findOrCreate({
+      where: { name: source.name },
+      defaults: {
+        website: source.website,
+        notes: 'Supplier reference from product source; contact details have not been verified.',
+        is_active: true,
+      },
+    });
+    supplierIds.set(source.host, supplier.id);
   }
 
   const categoryIds = new Map();
@@ -97,11 +121,13 @@ async function seed() {
   for (const [index, source] of catalog.produk.entries()) {
     const categoryId = categoryIds.get(source.kategori);
     if (!categoryId) continue;
+    const host = new URL(source.url ?? source.url_sumber).hostname;
+    const supplierId = supplierIds.get(host) ?? null;
 
     await sequelize.transaction(async (transaction) => {
       const [product, created] = await Product.findOrCreate({
         where: { sku: source.id },
-        defaults: productDefaults(source, categoryId, index),
+        defaults: productDefaults(source, categoryId, supplierId, index),
         transaction,
       });
 
@@ -115,6 +141,14 @@ async function seed() {
           stock_before: 0,
           stock_after: product.warehouse_stock,
           note: 'Stok awal simulasi untuk demo UAS.',
+        }, { transaction });
+      } else {
+        const defaults = productDefaults(source, categoryId, supplierId, index);
+        await product.update({
+          supplier_id: product.supplier_id ?? defaults.supplier_id,
+          purchase_price: product.purchase_price ?? defaults.purchase_price,
+          selling_price: product.selling_price ?? defaults.selling_price,
+          storage_location: product.storage_location || defaults.storage_location,
         }, { transaction });
       }
     });

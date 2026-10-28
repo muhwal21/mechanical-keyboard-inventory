@@ -26,6 +26,18 @@ export const Category = sequelize.define('Category', {
   name: { type: DataTypes.STRING(100), allowNull: false, unique: true },
 }, { tableName: 'categories', timestamps: false });
 
+export const Supplier = sequelize.define('Supplier', {
+  id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+  name: { type: DataTypes.STRING(150), allowNull: false, unique: true },
+  contact_person: { type: DataTypes.STRING(120), allowNull: true },
+  phone: { type: DataTypes.STRING(40), allowNull: true },
+  email: { type: DataTypes.STRING(190), allowNull: true, validate: { isEmail: true } },
+  city: { type: DataTypes.STRING(100), allowNull: true },
+  website: { type: DataTypes.STRING(500), allowNull: true },
+  notes: { type: DataTypes.STRING(500), allowNull: true },
+  is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+}, { tableName: 'suppliers', indexes: [{ fields: ['name'] }, { fields: ['is_active'] }] });
+
 export const Product = sequelize.define('Product', {
   id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
   category_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
@@ -35,10 +47,14 @@ export const Product = sequelize.define('Product', {
   description: { type: DataTypes.TEXT, allowNull: true },
   price_min: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
   price_max: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  purchase_price: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  selling_price: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
   currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'IDR' },
   listing_status: { type: DataTypes.STRING(120), allowNull: false, defaultValue: 'Ready' },
   warehouse_stock: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   reorder_point: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 5 },
+  storage_location: { type: DataTypes.STRING(80), allowNull: true },
+  supplier_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
   source_url: { type: DataTypes.STRING(500), allowNull: true },
   image_url: { type: DataTypes.STRING(1000), allowNull: true },
   specifications: { type: DataTypes.JSON, allowNull: false },
@@ -59,6 +75,8 @@ export const StockMovement = sequelize.define('StockMovement', {
 
 Category.hasMany(Product, { foreignKey: 'category_id', as: 'products', onDelete: 'RESTRICT' });
 Product.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+Supplier.hasMany(Product, { foreignKey: 'supplier_id', as: 'products', onDelete: 'SET NULL' });
+Product.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier', onDelete: 'SET NULL' });
 Product.hasMany(StockMovement, { foreignKey: 'product_id', as: 'movements', onDelete: 'RESTRICT' });
 StockMovement.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 User.hasMany(StockMovement, { foreignKey: 'user_id', as: 'movements', onDelete: 'RESTRICT' });

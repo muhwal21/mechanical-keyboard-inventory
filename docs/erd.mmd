@@ -2,6 +2,7 @@ erDiagram
   USERS ||--o{ STOCK_MOVEMENTS : records
   PRODUCTS ||--o{ STOCK_MOVEMENTS : changes
   CATEGORIES ||--o{ PRODUCTS : groups
+  SUPPLIERS o|--o{ PRODUCTS : supplies
 
   USERS {
     int id PK
@@ -18,15 +19,30 @@ erDiagram
   PRODUCTS {
     int id PK
     int category_id FK
+    int supplier_id FK
     string sku UK
     string name
     string brand
-    decimal unit_price
-    int stock_quantity
+    decimal purchase_price
+    decimal selling_price
+    decimal reference_price_min
+    decimal reference_price_max
+    int warehouse_stock
     int reorder_point
+    string storage_location
     string listing_status
     string source_url
     string image_url
+  }
+  SUPPLIERS {
+    int id PK
+    string name UK
+    string contact_person
+    string phone
+    string email
+    string city
+    string website
+    boolean is_active
   }
   STOCK_MOVEMENTS {
     int id PK

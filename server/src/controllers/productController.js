@@ -1,7 +1,10 @@
 import { Op, literal } from 'sequelize';
-import { Category, Product } from '../models/index.js';
+import { Category, Product, Supplier } from '../models/index.js';
 
-const productIncludes = [{ model: Category, as: 'category', attributes: ['id', 'name', 'slug'] }];
+const productIncludes = [
+  { model: Category, as: 'category', attributes: ['id', 'name', 'slug'] },
+  { model: Supplier, as: 'supplier', attributes: ['id', 'name', 'contact_person', 'phone', 'email', 'city', 'website'] },
+];
 
 export async function listProducts(req, res, next) {
   try {

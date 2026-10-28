@@ -20,6 +20,21 @@ CREATE TABLE IF NOT EXISTS categories (
   name VARCHAR(100) NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  contact_person VARCHAR(120) NULL,
+  phone VARCHAR(40) NULL,
+  email VARCHAR(190) NULL,
+  city VARCHAR(100) NULL,
+  website VARCHAR(500) NULL,
+  notes VARCHAR(500) NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  INDEX idx_suppliers_active (is_active)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS products (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   category_id INT UNSIGNED NOT NULL,
@@ -29,10 +44,14 @@ CREATE TABLE IF NOT EXISTS products (
   description TEXT NULL,
   price_min DECIMAL(14,2) NULL,
   price_max DECIMAL(14,2) NULL,
+  purchase_price DECIMAL(14,2) NULL,
+  selling_price DECIMAL(14,2) NULL,
   currency CHAR(3) NOT NULL DEFAULT 'IDR',
   listing_status VARCHAR(120) NOT NULL DEFAULT 'Ready',
   warehouse_stock INT UNSIGNED NOT NULL DEFAULT 0,
   reorder_point INT UNSIGNED NOT NULL DEFAULT 5,
+  storage_location VARCHAR(80) NULL,
+  supplier_id INT UNSIGNED NULL,
   source_url VARCHAR(500) NULL,
   image_url VARCHAR(1000) NULL,
   specifications JSON NOT NULL,
@@ -41,6 +60,7 @@ CREATE TABLE IF NOT EXISTS products (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES categories(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT fk_products_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON UPDATE CASCADE ON DELETE SET NULL,
   INDEX idx_products_category (category_id),
   INDEX idx_products_name (name),
   INDEX idx_products_stock (warehouse_stock)
