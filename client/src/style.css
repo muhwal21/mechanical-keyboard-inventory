@@ -31,17 +31,17 @@
   --accent-red-soft: #fee2e2;
   --accent-red-border: #fecaca;
   --danger-button-text: #ffffff;
-  --modal-surface: #ffffff;
-  --modal-ink: #293241;
-  --modal-muted: #687385;
-  --modal-line: #e7ebf1;
-  --modal-input: #ffffff;
-  --modal-input-ink: #374151;
-  --modal-info-surface: #eff6ff;
-  --modal-info-line: #bfdbfe;
-  --modal-danger-surface: #fee2e2;
-  --modal-danger-line: #fecaca;
-  --modal-secondary-ink: #626b79;
+  --modal-surface: #f1f2f3;
+  --modal-ink: #30343a;
+  --modal-muted: #717782;
+  --modal-line: #dfe2e6;
+  --modal-input: #fafafa;
+  --modal-input-ink: #393e47;
+  --modal-info-surface: #eaf1fa;
+  --modal-info-line: #cbd9eb;
+  --modal-danger-surface: #f7dddd;
+  --modal-danger-line: #ecc1c1;
+  --modal-secondary-ink: #5d6571;
   --modal-backdrop: rgba(27, 35, 49, .38);
   --modal-shadow: 0 24px 64px rgba(28, 39, 57, .18);
   --shadow: 0 4px 18px rgba(46, 46, 46, .045);
@@ -68,17 +68,17 @@ html[data-theme="dark"] {
   --danger-button-text: #000000;
   /* The app uses inversion for dark mode, so these values render as a light,
      high-contrast dialog surface inside the darker workspace. */
-  --modal-surface: #111111;
-  --modal-ink: #d6d6d6;
-  --modal-muted: #979797;
-  --modal-line: #181818;
-  --modal-input: #080808;
-  --modal-input-ink: #c8c8c8;
-  --modal-info-surface: #100900;
-  --modal-info-line: #402401;
-  --modal-danger-surface: #011d1d;
-  --modal-danger-line: #013535;
-  --modal-secondary-ink: #9d9486;
+  --modal-surface: #c7c7c7;
+  --modal-ink: #171717;
+  --modal-muted: #434343;
+  --modal-line: #aaaaaa;
+  --modal-input: #bebebe;
+  --modal-input-ink: #101010;
+  --modal-info-surface: #bdb4a5;
+  --modal-info-line: #a6957d;
+  --modal-danger-surface: #a2c4c4;
+  --modal-danger-line: #7fadad;
+  --modal-secondary-ink: #212121;
   --modal-backdrop: rgba(228, 228, 228, .42);
   --modal-shadow: 0 24px 64px rgba(235, 235, 235, .12);
 }
