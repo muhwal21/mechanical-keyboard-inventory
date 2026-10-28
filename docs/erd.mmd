@@ -1,0 +1,47 @@
+erDiagram
+  USERS ||--o{ STOCK_MOVEMENTS : records
+  PRODUCTS ||--o{ STOCK_MOVEMENTS : changes
+  CATEGORIES ||--o{ PRODUCTS : groups
+  USERS ||--o{ SESSIONS : owns
+
+  USERS {
+    int id PK
+    string name
+    string email UK
+    string password_hash
+    enum role
+  }
+  CATEGORIES {
+    int id PK
+    string name UK
+    string slug UK
+  }
+  PRODUCTS {
+    int id PK
+    int category_id FK
+    string sku UK
+    string name
+    string brand
+    decimal unit_price
+    int stock_quantity
+    int reorder_point
+    string listing_status
+    string source_url
+    string image_url
+  }
+  STOCK_MOVEMENTS {
+    int id PK
+    int product_id FK
+    int user_id FK
+    enum movement_type
+    int quantity
+    int stock_before
+    int stock_after
+    string note
+    datetime created_at
+  }
+  SESSIONS {
+    string session_id PK
+    int user_id FK
+    datetime expires
+  }
