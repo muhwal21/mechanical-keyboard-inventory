@@ -19,6 +19,7 @@
     "db:fresh": "npm --workspace server run db:fresh",
     "assets:download": "node scripts/download-product-images.mjs",
     "build": "npm --workspace client run build",
+    "vercel-build": "npm run build && node scripts/vercel-build.mjs",
     "start": "npm --workspace server run start"
   },
   "devDependencies": {

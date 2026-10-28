@@ -3,6 +3,7 @@
 !.env.example
 node_modules/
 client/dist/
+/public/
 server/uploads/
 .DS_Store
 *.log

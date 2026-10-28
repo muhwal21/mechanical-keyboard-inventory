@@ -106,6 +106,7 @@ docker-compose.yml              MySQL lokal
 
 - [Kebutuhan, arsitektur MVC, routing, keamanan](docs/requirements-and-architecture.md)
 - [Langkah deployment Railway + troubleshooting](docs/deployment.md)
+- [Langkah deployment Vercel](docs/deployment-vercel.md)
 - [Keputusan desain (referensi Quantara)](docs/design-decisions.md)
 - Screenshot siap tempel ke PDF (login, ringkasan, laba rugi, peta rak, detail produk + galeri, validasi, supplier, pergerakan stok, RBAC, tampilan staff, mode gelap, ponsel): [`docs/screenshots/`](docs/screenshots/)
 - Diagram (PNG siap tempel ke PDF): [ERD](docs/diagrams/erd.png) · [Arsitektur](docs/diagrams/architecture.png) · [Request flow](docs/diagrams/request-flow.png) · [Flowchart](docs/diagrams/flowchart.png) — sumber Mermaid di `docs/*.mmd`

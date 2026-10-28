@@ -1,10 +1,9 @@
-import { app, sessionStore } from './app.js';
+import { app, ensurePersistence, sessionStore } from './app.js';
 import { config } from './config.js';
 import { sequelize } from './models/index.js';
 
 try {
-  await sequelize.authenticate();
-  await sessionStore.onReady();
+  await ensurePersistence();
   const server = app.listen(config.port, () => {
     console.log(`KeyStock API listening on port ${config.port}`);
   });

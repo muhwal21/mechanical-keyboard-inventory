@@ -6,6 +6,7 @@ import express from 'express';
 import session from 'express-session';
 import helmet from 'helmet';
 import { config, isProduction } from './config.js';
+import { sequelize } from './models/index.js';
 import apiRoutes from './routes/apiRoutes.js';
 import { csrfProtection } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
@@ -26,6 +27,30 @@ const sessionStore = new MySQLStore({
 });
 
 const app = express();
+let persistenceReady;
+
+function ensurePersistence() {
+  if (!persistenceReady) {
+    persistenceReady = Promise.all([
+      sequelize.authenticate(),
+      sessionStore.onReady(),
+    ]).catch((error) => {
+      persistenceReady = undefined;
+      throw error;
+    });
+  }
+  return persistenceReady;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensurePersistence();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 if (isProduction) app.set('trust proxy', 1);
 
 app.disable('x-powered-by');
@@ -80,4 +105,4 @@ if (isProduction) {
 app.use(notFound);
 app.use(errorHandler);
 
-export { app, sessionStore };
+export { app, sessionStore, ensurePersistence };
