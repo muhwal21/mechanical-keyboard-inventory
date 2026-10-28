@@ -119,9 +119,10 @@ const navItems = computed(() => (user.value?.role === 'admin'
   : baseNavItems));
 
 const roleRules = [
-  { action: 'Melihat ringkasan, produk, supplier, dan riwayat stok', admin: true, staff: true },
-  { action: 'Mencatat stok masuk, stok keluar, dan penyesuaian', admin: true, staff: true },
-  { action: 'Menambah, mengubah, dan mengarsipkan produk', admin: true, staff: false },
+  { action: 'Melihat ringkasan, laba rugi, produk, supplier, dan riwayat stok', admin: true, staff: true },
+  { action: 'Mencatat stok masuk, stok keluar, dan penyesuaian beserta alasannya', admin: true, staff: true },
+  { action: 'Menambah, mengubah, dan mengarsipkan produk (harga dan lokasi rak)', admin: true, staff: false },
+  { action: 'Mengunggah, mengurutkan, dan menghapus foto produk', admin: true, staff: false },
   { action: 'Menambah, mengubah, dan mengarsipkan supplier', admin: true, staff: false },
   { action: 'Mengubah peran dan menonaktifkan pengguna', admin: true, staff: false },
 ];
