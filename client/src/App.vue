@@ -45,7 +45,8 @@ const errorMessage = ref('');
 const successMessage = ref('');
 const csrfToken = ref('');
 const dashboard = ref({ summary: {}, categories: [], lowStockProducts: [], movementTrend: [], recentMovements: [] });
-const products = ref([]);
+const products = ref([]); // rows shown in the product table (may be filtered)
+const catalog = ref([]); // every active product, used by dropdowns and counts
 const categories = ref([]);
 const suppliers = ref([]);
 const movements = ref([]);
@@ -53,6 +54,8 @@ const searchQuery = ref('');
 const selectedCategory = ref('');
 const selectedSupplier = ref('');
 const stockFilter = ref('all');
+const movementSearch = ref('');
+const movementTypeFilter = ref('');
 const productModalOpen = ref(false);
 const supplierModalOpen = ref(false);
 const movementModalOpen = ref(false);
@@ -105,6 +108,35 @@ const productStats = computed(() => {
   };
 });
 
+const selectedMovementProduct = computed(() => (
+  catalog.value.find((product) => String(product.id) === String(movementForm.product_id)) ?? null
+));
+
+// Preview of the balance after saving, mirroring the rules in server/src/services/stockService.js.
+const movementPreview = computed(() => {
+  const product = selectedMovementProduct.value;
+  if (!product || movementForm.quantity === '' || movementForm.quantity == null) return null;
+  const quantity = Number(movementForm.quantity);
+  if (!Number.isInteger(quantity) || quantity < 0) return null;
+  const before = Number(product.warehouse_stock);
+  const after = {
+    IN: before + quantity,
+    OUT: before - quantity,
+    ADJUSTMENT: quantity,
+  }[movementForm.movement_type];
+  return { before, after, invalid: after < 0 };
+});
+
+const filteredMovements = computed(() => {
+  const term = movementSearch.value.trim().toLowerCase();
+  return movements.value.filter((item) => {
+    if (movementTypeFilter.value && item.movement_type !== movementTypeFilter.value) return false;
+    if (!term) return true;
+    return [item.product?.name, item.product?.sku, item.product?.brand, item.user?.name, item.note]
+      .some((value) => value?.toLowerCase().includes(term));
+  });
+});
+
 function clearNotices() {
   errorMessage.value = '';
   successMessage.value = '';
@@ -149,12 +181,13 @@ async function loadAll({ clear = true } = {}) {
   if (clear) clearNotices();
   try {
     const supplierPath = user.value?.role === 'admin' ? '/suppliers?includeArchived=true' : '/suppliers';
-    const [summary, categoryData, productData, supplierData, movementData] = await Promise.all([
-      get('/dashboard'), get('/categories'), get('/products'), get(supplierPath), get('/stock-movements'),
-    ]);
+    const requests = [get('/dashboard'), get('/categories'), get('/products'), get(supplierPath), get('/stock-movements')];
+    if (hasProductFilters()) requests.push(get(productQuery()));
+    const [summary, categoryData, catalogData, supplierData, movementData, filteredData] = await Promise.all(requests);
     dashboard.value = summary;
     categories.value = categoryData.categories;
-    products.value = productData.products;
+    catalog.value = catalogData.products;
+    products.value = (filteredData ?? catalogData).products;
     suppliers.value = supplierData.suppliers;
     movements.value = movementData.movements;
   } catch (error) {
@@ -163,6 +196,10 @@ async function loadAll({ clear = true } = {}) {
   } finally {
     loading.value = false;
   }
+}
+
+function hasProductFilters() {
+  return Boolean(searchQuery.value.trim() || selectedCategory.value || stockFilter.value === 'low');
 }
 
 function productQuery() {
@@ -186,17 +223,18 @@ async function navigate(page) {
   try {
     if (page === 'products') {
       const supplierPath = user.value.role === 'admin' ? '/suppliers?includeArchived=true' : '/suppliers';
-      const [productData, categoryData, supplierData] = await Promise.all([
-        get(productQuery()), get('/categories'), get(supplierPath),
+      const [catalogData, categoryData, supplierData, filteredData] = await Promise.all([
+        get('/products'), get('/categories'), get(supplierPath), hasProductFilters() ? get(productQuery()) : null,
       ]);
-      products.value = productData.products;
+      catalog.value = catalogData.products;
+      products.value = (filteredData ?? catalogData).products;
       categories.value = categoryData.categories;
       suppliers.value = supplierData.suppliers;
     } else if (page === 'suppliers') {
       const supplierPath = user.value.role === 'admin' ? '/suppliers?includeArchived=true' : '/suppliers';
       const [supplierData, productData] = await Promise.all([get(supplierPath), get('/products')]);
       suppliers.value = supplierData.suppliers;
-      products.value = productData.products;
+      catalog.value = productData.products;
     } else {
       const data = await get('/stock-movements');
       movements.value = data.movements;
@@ -429,7 +467,7 @@ async function confirmPendingAction() {
 function openMovement(product = null, type = 'IN') {
   clearFormErrors();
   Object.assign(movementForm, {
-    product_id: product?.id ?? products.value[0]?.id ?? '',
+    product_id: String(product?.id ?? catalog.value[0]?.id ?? ''),
     movement_type: type, quantity: '', note: '',
   });
   movementModalOpen.value = true;
@@ -541,7 +579,7 @@ function trendHeight(total) {
 }
 
 function productsForSupplier(supplierId) {
-  return products.value.filter((product) => Number(product.supplier_id) === Number(supplierId)).length;
+  return catalog.value.filter((product) => Number(product.supplier_id) === Number(supplierId)).length;
 }
 
 function onImageError(event) {
@@ -753,7 +791,7 @@ onMounted(async () => {
             <div><div class="eyebrow muted-eyebrow">PURCHASING CONTACTS</div><h1>Supplier</h1><p>Catat toko atau distributor tempat produk diperoleh. Brand produk dikelola terpisah.</p></div>
             <div class="heading-actions"><button v-if="user.role === 'admin'" class="button primary" @click="openCreateSupplier()"><Plus :size="16" /> Tambah supplier</button></div>
           </section>
-          <section class="supplier-summary-grid"><article class="supplier-summary-card"><span class="supplier-summary-icon"><Truck :size="17" /></span><div><small>Supplier aktif</small><strong>{{ suppliers.filter((supplier) => supplier.is_active).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon contact-icon"><Building2 :size="17" /></span><div><small>Produk dengan supplier</small><strong>{{ products.filter((product) => product.supplier_id).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon warning-icon"><AlertTriangle :size="17" /></span><div><small>Kontak perlu dilengkapi</small><strong>{{ suppliers.filter((supplier) => supplier.is_active && !supplier.phone && !supplier.email).length }}</strong></div></article></section>
+          <section class="supplier-summary-grid"><article class="supplier-summary-card"><span class="supplier-summary-icon"><Truck :size="17" /></span><div><small>Supplier aktif</small><strong>{{ suppliers.filter((supplier) => supplier.is_active).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon contact-icon"><Building2 :size="17" /></span><div><small>Produk dengan supplier</small><strong>{{ catalog.filter((product) => product.supplier_id).length }}</strong></div></article><article class="supplier-summary-card"><span class="supplier-summary-icon warning-icon"><AlertTriangle :size="17" /></span><div><small>Kontak perlu dilengkapi</small><strong>{{ suppliers.filter((supplier) => supplier.is_active && !supplier.phone && !supplier.email).length }}</strong></div></article></section>
           <div v-if="loading" class="loading-inline panel"><span class="spinner"></span> Memuat supplier...</div>
           <section v-else-if="suppliers.length" class="supplier-grid"><article v-for="supplier in suppliers" :key="supplier.id" class="panel supplier-card" :class="{ archived: !supplier.is_active }">
             <div class="supplier-card-head"><div class="supplier-avatar"><Truck :size="18" /></div><span class="stock-badge" :class="supplier.is_active ? 'good' : 'empty'"><span></span>{{ supplier.is_active ? 'Aktif' : 'Diarsipkan' }}</span><div v-if="user.role === 'admin'" class="supplier-actions"><button class="icon-button subtle" title="Edit supplier" aria-label="Edit supplier" @click="openEditSupplier(supplier)"><Settings :size="15" /></button><button v-if="supplier.is_active" class="icon-button danger-quiet" title="Arsipkan supplier" aria-label="Arsipkan supplier" @click="archiveSupplier(supplier)"><X :size="15" /></button></div></div>
@@ -770,12 +808,13 @@ onMounted(async () => {
             <div class="heading-actions"><button class="button primary" @click="openMovement()"><Plus :size="16" /> Catat pergerakan</button></div>
           </section>
           <section class="panel movement-panel">
-            <div class="panel-heading"><div><div class="panel-kicker">STOCK MOVEMENTS</div><h2>Riwayat inventaris</h2><p>{{ movements.length }} catatan terbaru</p></div><div class="audit-tag"><History :size="15" /> Audit trail aktif</div></div>
+            <div class="panel-heading"><div><div class="panel-kicker">STOCK MOVEMENTS</div><h2>Riwayat inventaris</h2><p>{{ filteredMovements.length }} dari {{ movements.length }} catatan terbaru</p></div><div class="audit-tag"><History :size="15" /> Audit trail aktif</div></div>
+            <div class="table-toolbar"><div class="search-field"><Search :size="17" /><input v-model="movementSearch" type="search" placeholder="Cari produk, SKU, pengguna, atau catatan..." aria-label="Cari riwayat stok" /><button v-if="movementSearch" class="clear-search" type="button" aria-label="Hapus pencarian" @click="movementSearch = ''"><X :size="14" /></button></div><select v-model="movementTypeFilter" class="filter-select" aria-label="Filter jenis pergerakan"><option value="">Semua aktivitas</option><option value="IN">Stok masuk</option><option value="OUT">Stok keluar</option><option value="ADJUSTMENT">Penyesuaian</option></select></div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat riwayat...</div>
-            <div v-else-if="movements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>STOK SEBELUM / SESUDAH</th><th>JUMLAH</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
-              <tr v-for="item in movements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
+            <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>AKTIVITAS</th><th>PRODUK</th><th>STOK SEBELUM / SESUDAH</th><th>JUMLAH</th><th>DICATAT OLEH</th><th>WAKTU</th><th>CATATAN</th></tr></thead><tbody>
+              <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
-            <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>Belum ada riwayat</strong><span>Setiap perubahan saldo akan dicatat di halaman ini.</span></div>
+            <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>{{ movements.length ? 'Tidak ada catatan yang cocok' : 'Belum ada riwayat' }}</strong><span>{{ movements.length ? 'Ubah kata pencarian atau filter aktivitas.' : 'Setiap perubahan saldo akan dicatat di halaman ini.' }}</span></div>
           </section>
         </template>
 
@@ -865,13 +904,19 @@ onMounted(async () => {
         <form class="modal-form" @submit.prevent="saveMovement">
           <div class="modal-body">
             <div v-if="formError" class="notice error-notice" role="alert"><AlertTriangle :size="17" />{{ formError }}</div>
-            <label :class="{ invalid: fieldErrors.product_id }">Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in products" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select><small v-if="fieldErrors.product_id" class="field-error">{{ fieldErrors.product_id }}</small></label>
+            <label :class="{ invalid: fieldErrors.product_id }">Produk<select v-model="movementForm.product_id" required><option value="" disabled>Pilih produk</option><option v-for="product in catalog" :key="product.id" :value="String(product.id)">{{ product.name }} · {{ formatNumber(product.warehouse_stock) }} unit</option></select><small v-if="fieldErrors.product_id" class="field-error">{{ fieldErrors.product_id }}</small></label>
             <div class="movement-type-picker" role="radiogroup" aria-label="Jenis pergerakan"><button v-for="type in [{id:'IN',label:'Stok masuk',icon:ArrowDownToLine},{id:'OUT',label:'Stok keluar',icon:ArrowUpFromLine},{id:'ADJUSTMENT',label:'Penyesuaian',icon:ArrowDownUp}]" :key="type.id" type="button" role="radio" :aria-checked="movementForm.movement_type === type.id" class="movement-type-option" :class="[{ selected: movementForm.movement_type === type.id }, `kind-${type.id.toLowerCase()}`]" @click="movementForm.movement_type = type.id"><component :is="type.icon" :size="17" /><span>{{ type.label }}</span></button></div>
             <label :class="{ invalid: fieldErrors.quantity }">{{ movementForm.movement_type === 'ADJUSTMENT' ? 'Jumlah saldo setelah penyesuaian' : 'Jumlah unit' }}<input v-model="movementForm.quantity" type="number" min="0" step="1" inputmode="numeric" required :placeholder="movementForm.movement_type === 'ADJUSTMENT' ? 'Masukkan saldo akhir' : 'Masukkan jumlah unit'" /><small v-if="fieldErrors.quantity" class="field-error">{{ fieldErrors.quantity }}</small></label>
+            <div v-if="selectedMovementProduct" class="stock-preview" :class="{ invalid: movementPreview?.invalid }" aria-live="polite">
+              <div><span>Stok sekarang</span><strong>{{ formatNumber(selectedMovementProduct.warehouse_stock) }} <small>unit</small></strong></div>
+              <span class="stock-preview-arrow">→</span>
+              <div><span>Setelah disimpan</span><strong>{{ movementPreview ? formatNumber(movementPreview.after) : '—' }} <small v-if="movementPreview">unit</small></strong></div>
+              <p v-if="movementPreview?.invalid">Stok keluar melebihi stok yang tersedia.</p>
+            </div>
             <label :class="{ invalid: fieldErrors.note }">Catatan<textarea v-model="movementForm.note" rows="3" maxlength="500" placeholder="Contoh: Pembelian dari supplier atau stok rusak"></textarea><small v-if="fieldErrors.note" class="field-error">{{ fieldErrors.note }}</small></label>
             <p class="form-hint"><ShieldCheck :size="15" /> Perubahan saldo menyimpan stok sebelum/sesudah, pengguna, dan waktu.</p>
           </div>
-          <div class="modal-actions"><button type="button" class="button secondary" @click="movementModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy"><Check :size="16" /> {{ busy ? 'Mencatat...' : 'Simpan pergerakan' }}</button></div>
+          <div class="modal-actions"><button type="button" class="button secondary" @click="movementModalOpen = false">Batal</button><button type="submit" class="button primary" :disabled="busy || movementPreview?.invalid"><Check :size="16" /> {{ busy ? 'Mencatat...' : 'Simpan pergerakan' }}</button></div>
         </form>
       </section>
     </div>
