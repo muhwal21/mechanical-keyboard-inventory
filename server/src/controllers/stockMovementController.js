@@ -1,15 +1,21 @@
-import { Product, StockMovement, User } from '../models/index.js';
+import { Category, Product, StockMovement, User } from '../models/index.js';
 import { recordMovement, StockError } from '../services/stockService.js';
 
 export async function listMovements(req, res, next) {
   try {
+    // Eager loading (like Eloquent's with('product.category', 'user')) avoids one query per row.
     const movements = await StockMovement.findAll({
       include: [
-        { model: Product, as: 'product', attributes: ['id', 'name', 'sku', 'brand'] },
+        {
+          model: Product,
+          as: 'product',
+          attributes: ['id', 'name', 'sku', 'brand', 'storage_location', 'image_url'],
+          include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
+        },
         { model: User, as: 'user', attributes: ['id', 'name'] },
       ],
       order: [['created_at', 'DESC']],
-      limit: 100,
+      limit: 200,
     });
     return res.json({ movements });
   } catch (error) {
