@@ -3,9 +3,9 @@ import { computed, nextTick, onMounted, reactive, ref, watchEffect } from 'vue';
 import {
   AlertTriangle, ArrowDownToLine, ArrowDownUp, ArrowRight, ArrowUpFromLine, ArrowUpRight, AtSign,
   Boxes, Building2, Check, ChevronDown, ChevronLeft, ChevronRight, Download, ExternalLink, Eye,
-  EyeOff, History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, Moon, Package,
-  PackageX, Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun, TrendingDown, TrendingUp,
-  Truck, User, UserCheck, UserPlus, UserX, Users, X,
+  EyeOff, History, Keyboard, LayoutDashboard, Lock, LogIn, LogOut, Mail, MapPin, MessageCircle,
+  Moon, Package, PackageX, Phone, Plus, RefreshCw, Search, Settings, ShieldCheck, Sun,
+  TrendingDown, TrendingUp, Truck, User, UserCheck, UserPlus, UserX, Users, X,
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 import ActivityHeatmap from './components/ActivityHeatmap.vue';
@@ -986,8 +986,9 @@ onMounted(async () => {
               <div v-if="overviewProduct" class="supplier-strip">
                 <div class="avatar">{{ (overviewProduct.supplier?.name ?? '?').slice(0, 1).toUpperCase() }}</div>
                 <div class="supplier-strip-name"><small>Supplier</small><strong>{{ overviewProduct.supplier?.name ?? 'Belum ditentukan' }}</strong></div>
+                <a class="round-button wa-round" :class="{ disabled: !whatsappUrl(overviewProduct.supplier?.phone) }" :href="whatsappUrl(overviewProduct.supplier?.phone) ?? undefined" target="_blank" rel="noopener noreferrer" :title="overviewProduct.supplier?.phone ? 'Chat WhatsApp supplier' : 'Nomor WhatsApp belum dicatat'" :aria-label="overviewProduct.supplier?.phone ? `WhatsApp ${overviewProduct.supplier.name}` : 'Nomor WhatsApp belum dicatat'"><MessageCircle :size="16" /></a>
                 <a class="round-button" :class="{ disabled: !overviewProduct.supplier?.email }" :href="overviewProduct.supplier?.email ? `mailto:${overviewProduct.supplier.email}` : undefined" :title="overviewProduct.supplier?.email || 'Email supplier belum dicatat'" :aria-label="overviewProduct.supplier?.email ? `Email ${overviewProduct.supplier.name}` : 'Email supplier belum dicatat'"><Mail :size="16" /></a>
-                <a class="round-button solid" :class="{ disabled: !overviewProduct.supplier?.phone }" :href="overviewProduct.supplier?.phone ? `tel:${overviewProduct.supplier.phone}` : undefined" :title="overviewProduct.supplier?.phone || 'Telepon supplier belum dicatat'" :aria-label="overviewProduct.supplier?.phone ? `Telepon ${overviewProduct.supplier.name}` : 'Telepon supplier belum dicatat'"><Phone :size="16" /></a>
+                <a class="round-button solid" :class="{ disabled: !overviewProduct.supplier?.phone }" :href="telUrl(overviewProduct.supplier?.phone) ?? undefined" :title="overviewProduct.supplier?.phone || 'Telepon supplier belum dicatat'" :aria-label="overviewProduct.supplier?.phone ? `Telepon ${overviewProduct.supplier.name}` : 'Telepon supplier belum dicatat'"><Phone :size="16" /></a>
               </div>
             </article>
 
@@ -1072,7 +1073,8 @@ onMounted(async () => {
           <section v-else-if="suppliers.length" class="supplier-grid"><article v-for="supplier in suppliers" :key="supplier.id" class="panel supplier-card" :class="{ archived: !supplier.is_active }">
             <div class="supplier-card-head"><div class="supplier-avatar"><Truck :size="18" /></div><span class="stock-badge" :class="supplier.is_active ? 'good' : 'empty'"><span></span>{{ supplier.is_active ? 'Aktif' : 'Diarsipkan' }}</span><div v-if="user.role === 'admin'" class="supplier-actions"><button class="icon-button subtle" title="Edit supplier" aria-label="Edit supplier" @click="openEditSupplier(supplier)"><Settings :size="15" /></button><button v-if="supplier.is_active" class="icon-button danger-quiet" title="Arsipkan supplier" aria-label="Arsipkan supplier" @click="archiveSupplier(supplier)"><X :size="15" /></button></div></div>
             <h2>{{ supplier.name }}</h2><p class="supplier-contact-person">{{ supplier.contact_person || 'Kontak person belum dicatat' }}</p>
-            <div class="supplier-contact-list"><a v-if="supplier.phone" :href="`tel:${supplier.phone}`"><Phone :size="15" />{{ supplier.phone }}</a><span v-else class="missing-contact"><Phone :size="15" />Nomor telepon belum dicatat</span><a v-if="supplier.email" :href="`mailto:${supplier.email}`"><Mail :size="15" />{{ supplier.email }}</a><span v-else class="missing-contact"><Mail :size="15" />Email belum dicatat</span><span v-if="supplier.city"><MapPin :size="15" />{{ supplier.city }}</span><a v-if="supplier.website" :href="supplier.website" target="_blank" rel="noopener noreferrer"><ExternalLink :size="15" />Buka situs supplier</a></div>
+            <div class="supplier-contact-list"><span v-if="supplier.phone"><Phone :size="15" />{{ supplier.phone }}</span><span v-else class="missing-contact"><Phone :size="15" />Nomor telepon belum dicatat</span><a v-if="supplier.email" :href="`mailto:${supplier.email}`"><Mail :size="15" />{{ supplier.email }}</a><span v-else class="missing-contact"><Mail :size="15" />Email belum dicatat</span><span v-if="supplier.city"><MapPin :size="15" />{{ supplier.city }}</span><a v-if="supplier.website" :href="supplier.website" target="_blank" rel="noopener noreferrer"><ExternalLink :size="15" />Buka situs supplier</a></div>
+            <div v-if="supplier.phone || supplier.email" class="supplier-quick-actions"><a v-if="whatsappUrl(supplier.phone)" class="wa-button" :href="whatsappUrl(supplier.phone)" target="_blank" rel="noopener noreferrer" :aria-label="`Chat WhatsApp ${supplier.name}`"><MessageCircle :size="15" /> WhatsApp</a><a v-if="telUrl(supplier.phone)" class="button secondary small-action" :href="telUrl(supplier.phone)"><Phone :size="14" /> Telepon</a><a v-if="supplier.email" class="button secondary small-action" :href="`mailto:${supplier.email}`"><Mail :size="14" /> Email</a></div>
             <div class="supplier-card-footer"><span><Package :size="14" /> {{ productsForSupplier(supplier.id) }} produk terhubung</span><span v-if="supplier.notes" class="supplier-note">{{ supplier.notes }}</span></div>
           </article></section>
           <section v-else class="panel empty-state supplier-empty"><div class="empty-icon"><Truck :size="22" /></div><strong>Belum ada supplier</strong><span>Tambahkan supplier untuk menghubungkan produk dengan sumber pembelian.</span><button v-if="user.role === 'admin'" class="button secondary small-button" @click="openCreateSupplier()"><Plus :size="15" /> Tambah supplier</button></section>

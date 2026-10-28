@@ -737,3 +737,8 @@ html[data-theme="dark"] .small-spinner { border-color: rgba(0, 0, 0, .25); borde
   .detail-actions .button { flex: 1 1 calc(50% - 4px); }
   .supplier-strip { flex-wrap: wrap; }
 }
+
+/* Supplier contact shortcuts */
+.supplier-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.supplier-quick-actions .button { text-decoration: none; }
+.round-button.wa-round { color: #0b3d1c; border-color: #25d366; background: #25d366; }
