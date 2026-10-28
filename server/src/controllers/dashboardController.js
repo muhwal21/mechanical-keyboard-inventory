@@ -6,9 +6,9 @@ export async function getDashboard(req, res, next) {
     const trendStart = new Date();
     trendStart.setHours(0, 0, 0, 0);
     trendStart.setDate(trendStart.getDate() - 6);
-    const [activeProducts, stockValueRows, lowStockProducts, categories, recentMovements, activeSuppliers, pricedPurchaseProducts, trendRows] = await Promise.all([
+    const [activeProducts, stockValueRows, lowStockProducts, categories, recentMovements, activeSuppliers, trendRows] = await Promise.all([
       Product.count({ where: { is_active: true } }),
-      Product.findAll({ attributes: ['warehouse_stock', 'purchase_price'], where: { is_active: true } }),
+      Product.findAll({ attributes: ['warehouse_stock', 'purchase_price', 'currency'], where: { is_active: true } }),
       Product.findAll({
         where: { is_active: true, [Op.and]: [literal('warehouse_stock <= reorder_point')] },
         include: [
@@ -28,7 +28,6 @@ export async function getDashboard(req, res, next) {
         limit: 6,
       }),
       Supplier.count({ where: { is_active: true } }),
-      Product.count({ where: { is_active: true, purchase_price: { [Op.ne]: null } } }),
       StockMovement.findAll({
         attributes: ['movement_type', 'createdAt'],
         where: { createdAt: { [Op.gte]: trendStart } },
@@ -37,8 +36,11 @@ export async function getDashboard(req, res, next) {
     ]);
 
     const totalStock = stockValueRows.reduce((sum, product) => sum + product.warehouse_stock, 0);
+    // Inventory value is reported in rupiah only; USD-priced items are not mixed into the IDR total.
+    const pricedRows = stockValueRows.filter((product) => product.purchase_price != null && product.currency === 'IDR');
+    const pricedPurchaseProducts = pricedRows.length;
     const inventoryCost = pricedPurchaseProducts
-      ? stockValueRows.reduce((sum, product) => sum + (Number(product.purchase_price) || 0) * product.warehouse_stock, 0)
+      ? pricedRows.reduce((sum, product) => sum + Number(product.purchase_price) * product.warehouse_stock, 0)
       : null;
     const lowStockCount = await Product.count({ where: { is_active: true, [Op.and]: [literal('warehouse_stock <= reorder_point')] } });
     const outOfStockCount = await Product.count({ where: { is_active: true, warehouse_stock: 0 } });
