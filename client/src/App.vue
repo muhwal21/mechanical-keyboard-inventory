@@ -17,7 +17,7 @@ const busy = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 const csrfToken = ref('');
-const dashboard = ref({ summary: {}, categories: [], lowStockProducts: [], recentMovements: [] });
+const dashboard = ref({ summary: {}, categories: [], lowStockProducts: [], movementTrend: [], recentMovements: [] });
 const products = ref([]);
 const categories = ref([]);
 const suppliers = ref([]);
@@ -64,6 +64,15 @@ const today = new Intl.DateTimeFormat('id-ID', {
 const filteredProducts = computed(() => products.value.filter((product) => (
   !selectedSupplier.value || String(product.supplier_id) === selectedSupplier.value
 )));
+const productStats = computed(() => {
+  const rows = filteredProducts.value;
+  return {
+    sku: rows.length,
+    units: rows.reduce((sum, product) => sum + Number(product.warehouse_stock || 0), 0),
+    lowStock: rows.filter((product) => Number(product.warehouse_stock) <= Number(product.reorder_point)).length,
+    supplied: rows.filter((product) => product.supplier_id).length,
+  };
+});
 
 function clearNotices() {
   errorMessage.value = '';
@@ -429,6 +438,20 @@ function formatDate(date) {
   }).format(parsed);
 }
 
+function formatTrendDay(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat('id-ID', { weekday: 'short' }).format(new Date(year, month - 1, day));
+}
+
+function trendSegmentStyle(count, total) {
+  return { height: total ? `${(count / total) * 100}%` : '0%' };
+}
+
+function trendHeight(total) {
+  const max = Math.max(1, ...(dashboard.value.movementTrend ?? []).map((day) => day.total));
+  return `${total ? Math.max(8, (total / max) * 100) : 0}%`;
+}
+
 function productsForSupplier(supplierId) {
   return products.value.filter((product) => Number(product.supplier_id) === Number(supplierId)).length;
 }
@@ -553,21 +576,36 @@ onMounted(async () => {
             <article class="metric-card alert-metric"><div class="metric-top"><span class="metric-icon icon-amber"><AlertTriangle :size="18" /></span><span class="metric-caption">Perlu perhatian</span></div><div class="metric-value">{{ formatNumber(dashboard.summary?.lowStockCount) }}</div><div class="metric-foot"><span>{{ formatNumber(dashboard.summary?.outOfStockCount) }} produk habis</span><button class="text-link" @click="showLowStock">Tinjau <span>↗</span></button></div></article>
           </section>
 
-          <section class="dashboard-grid">
-            <article class="panel stock-panel">
+          <section class="dashboard-grid insight-grid">
+            <article class="panel trend-panel">
+              <div class="panel-heading"><div><div class="panel-kicker">MOVEMENT ANALYTICS</div><h2>Aktivitas stok</h2><p>Jumlah transaksi inventaris selama tujuh hari terakhir.</p></div><span class="period-tag">7 hari</span></div>
+              <div class="trend-legend"><span><i class="legend-in"></i>Masuk</span><span><i class="legend-out"></i>Keluar</span><span><i class="legend-adjustment"></i>Penyesuaian</span></div>
+              <div class="trend-chart" role="img" aria-label="Grafik transaksi stok tujuh hari terakhir">
+                <div v-for="day in dashboard.movementTrend" :key="day.date" class="trend-column">
+                  <strong>{{ day.total }}</strong>
+                  <div class="trend-track"><div class="trend-bar-stack" :style="{ height: trendHeight(day.total) }"><i class="trend-adjustment" :style="trendSegmentStyle(day.adjustment, day.total)"></i><i class="trend-out" :style="trendSegmentStyle(day.out, day.total)"></i><i class="trend-in" :style="trendSegmentStyle(day.in, day.total)"></i></div></div>
+                  <small>{{ formatTrendDay(day.date) }}</small>
+                </div>
+              </div>
+              <div class="trend-foot"><span>{{ formatNumber(dashboard.movementTrend?.reduce((sum, day) => sum + day.total, 0)) }} transaksi tercatat</span><span class="trend-data-note">Dihitung dari log stok, bukan data penjualan</span></div>
+            </article>
+
+            <article class="panel category-panel">
+              <div class="panel-heading"><div><div class="panel-kicker">STOCK MIX</div><h2>Produk per kategori</h2><p>SKU aktif dalam katalog inventaris.</p></div></div>
+              <div class="category-chart"><div v-for="(category, index) in categories" :key="category.id" class="category-bar-row"><div class="bar-label"><span class="category-dot" :class="`dot-${category.slug}`"></span><span>{{ category.name }}</span><strong>{{ category.product_count ?? 0 }}</strong></div><div class="bar-track"><span :class="`bar-${index % 5}`" :style="{ width: `${Math.max(3, ((category.product_count ?? 0) / Math.max(1, dashboard.summary?.activeProducts ?? 1)) * 100)}%` }"></span></div></div></div>
+              <div class="category-foot"><span><span class="legend-square"></span> SKU aktif</span><strong>{{ categories.length }} kategori</strong></div>
+              <div class="source-note"><ShieldCheck :size="15" /><span>Harga modal hanya dihitung untuk SKU yang memiliki harga beli.</span></div>
+            </article>
+          </section>
+
+          <section class="panel stock-panel stock-panel-wide">
+            <article>
               <div class="panel-heading"><div><div class="panel-kicker">STOCK CONTROL</div><h2>Perlu restock</h2><p>Produk yang menyentuh atau melewati batas minimum.</p></div><button class="link-button" @click="showLowStock">Semua perhatian <span>↗</span></button></div>
               <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat stok...</div>
               <div v-else-if="dashboard.lowStockProducts?.length" class="attention-table-wrap"><table class="data-table attention-table"><thead><tr><th>PRODUK</th><th>SUPPLIER</th><th>LOKASI</th><th>SISA / MINIMUM</th><th></th></tr></thead><tbody>
                 <tr v-for="product in dashboard.lowStockProducts" :key="product.id"><td><div class="product-cell compact-product"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.sku }}</small></div></div></td><td>{{ product.supplier?.name ?? 'Belum dipilih' }}</td><td>{{ product.storage_location || '—' }}</td><td><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>/ {{ formatNumber(product.reorder_point) }}</small></span></td><td><button class="icon-button subtle" title="Catat stok masuk" aria-label="Catat stok masuk" @click="openMovement(product)"><Plus :size="17" /></button></td></tr>
               </tbody></table></div>
               <div v-else class="empty-state compact-empty"><div class="empty-icon"><Check :size="21" /></div><strong>Belum ada stok di bawah minimum</strong><span>Daftar ini akan menampilkan produk saat jumlahnya perlu diisi ulang.</span></div>
-            </article>
-
-            <article class="panel category-panel">
-              <div class="panel-heading"><div><div class="panel-kicker">PRODUCT MIX</div><h2>Distribusi kategori</h2><p>Jumlah SKU aktif per kelompok.</p></div></div>
-              <div class="category-chart"><div v-for="(category, index) in categories" :key="category.id" class="category-bar-row"><div class="bar-label"><span class="category-dot" :class="`dot-${category.slug}`"></span><span>{{ category.name }}</span><strong>{{ category.product_count ?? 0 }}</strong></div><div class="bar-track"><span :class="`bar-${index % 5}`" :style="{ width: `${Math.max(3, ((category.product_count ?? 0) / Math.max(1, dashboard.summary?.activeProducts ?? 1)) * 100)}%` }"></span></div></div></div>
-              <div class="category-foot"><span><span class="legend-square"></span> SKU aktif</span><strong>{{ categories.length }} kategori</strong></div>
-              <div class="source-note"><ShieldCheck :size="15" /><span>Harga beli yang belum tersedia dibiarkan kosong agar nilai modal tidak ditebak.</span></div>
             </article>
           </section>
 
@@ -585,6 +623,12 @@ onMounted(async () => {
             <div><div class="eyebrow muted-eyebrow">PRODUCT & STOCK REGISTER</div><h1>Produk</h1><p>Kelola SKU, brand, supplier, harga, dan lokasi penyimpanan.</p></div>
             <div class="heading-actions"><button v-if="user.role === 'admin'" class="button primary" @click="openCreateProduct()"><Plus :size="16" /> Tambah produk</button></div>
           </section>
+          <section class="product-stat-grid" aria-label="Ringkasan produk yang ditampilkan">
+            <article class="product-stat-card"><span>SKU ditampilkan</span><strong>{{ formatNumber(productStats.sku) }}</strong></article>
+            <article class="product-stat-card"><span>Jumlah unit stok</span><strong>{{ formatNumber(productStats.units) }}</strong></article>
+            <article class="product-stat-card"><span>Perlu restock</span><strong :class="productStats.lowStock ? 'stat-warning' : ''">{{ formatNumber(productStats.lowStock) }}</strong></article>
+            <article class="product-stat-card"><span>SKU dengan supplier</span><strong>{{ formatNumber(productStats.supplied) }}</strong></article>
+          </section>
           <section class="panel table-panel">
             <div class="table-toolbar"><div class="search-field"><Search :size="17" /><input v-model="searchQuery" type="search" placeholder="Cari nama, SKU, atau brand..." @keydown.enter="applyProductFilters" /><button v-if="searchQuery" class="clear-search" aria-label="Hapus pencarian" @click="searchQuery = ''; applyProductFilters()"><X :size="14" /></button></div>
               <select v-model="selectedCategory" class="filter-select" aria-label="Filter kategori" @change="applyProductFilters"><option value="">Semua kategori</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select>
@@ -592,8 +636,8 @@ onMounted(async () => {
               <select v-model="stockFilter" class="filter-select stock-filter" aria-label="Filter kondisi stok" @change="applyProductFilters"><option value="all">Semua stok</option><option value="low">Perlu restock</option></select>
             </div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat produk...</div>
-            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table"><thead><tr><th>PRODUK / SKU</th><th>BRAND</th><th>SUPPLIER</th><th>HARGA BELI</th><th>HARGA JUAL</th><th>STOK</th><th>LOKASI</th><th>KONDISI</th><th>AKSI</th></tr></thead><tbody>
-              <tr v-for="product in filteredProducts" :key="product.id"><td><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td><td><span class="brand-tag">{{ product.brand }}</span></td><td><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td><td class="money-cell">{{ formatMoney(product.purchase_price, product.currency) }}</td><td class="money-cell"><strong>{{ formatMoney(product.selling_price, product.currency) }}</strong><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. {{ formatReferencePrice(product) }}</small></td><td><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td><td><span class="location-tag">{{ product.storage_location || '—' }}</span></td><td><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td><td><div class="row-actions"><a v-if="product.source_url" class="icon-button subtle" :href="product.source_url" target="_blank" rel="noopener noreferrer" title="Buka sumber produk" aria-label="Buka sumber produk"><ExternalLink :size="15" /></a><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td></tr>
+            <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table"><thead><tr><th>PRODUK</th><th>SUPPLIER / KONTAK</th><th>HARGA BELI / JUAL</th><th>STOK</th><th>LOKASI</th><th>KONDISI</th><th>AKSI</th></tr></thead><tbody>
+              <tr v-for="product in filteredProducts" :key="product.id"><td><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" @error="onImageError" /><div><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td><td><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td><td class="money-pair-cell"><div><span>Beli</span><strong>{{ formatMoney(product.purchase_price, product.currency) }}</strong></div><div><span>Jual</span><strong>{{ formatMoney(product.selling_price, product.currency) }}</strong></div><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. listing {{ formatReferencePrice(product) }}</small></td><td><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td><td><span class="location-tag">{{ product.storage_location || '—' }}</span></td><td><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td><td><div class="row-actions"><a v-if="product.source_url" class="icon-button subtle" :href="product.source_url" target="_blank" rel="noopener noreferrer" title="Buka sumber produk" aria-label="Buka sumber produk"><ExternalLink :size="15" /></a><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td></tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><Package :size="22" /></div><strong>Produk tidak ditemukan</strong><span>Ubah kata pencarian atau filter, lalu coba lagi.</span><button v-if="user.role === 'admin'" class="button secondary small-button" @click="openCreateProduct()"><Plus :size="15" /> Tambah produk pertama</button></div>
             <div class="table-footer"><span>Menampilkan <strong>{{ filteredProducts.length }}</strong> produk</span><span class="table-footer-note"><ShieldCheck :size="14" /> Harga beli tidak diasumsikan dari harga katalog.</span></div>
