@@ -7,7 +7,7 @@ export function setCsrfToken(token) {
 export async function apiRequest(path, options = {}) {
   const method = (options.method ?? 'GET').toUpperCase();
   const headers = new Headers(options.headers ?? {});
-  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+  if (typeof options.body === 'string' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) headers.set('X-CSRF-Token', csrfToken);
 
   let response;
@@ -53,4 +53,9 @@ export function remove(path) {
 
 export function patch(path, body) {
   return apiRequest(path, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+// Sends a file as the raw request body (used for product photos).
+export function upload(path, file) {
+  return apiRequest(path, { method: 'POST', body: file, headers: { 'Content-Type': file.type } });
 }

@@ -9,7 +9,12 @@ import {
 } from '@lucide/vue';
 import { get, patch, post, put, remove, setCsrfToken } from './api.js';
 import ActivityHeatmap from './components/ActivityHeatmap.vue';
+import ProductDetailModal from './components/ProductDetailModal.vue';
 import RackMap from './components/RackMap.vue';
+import {
+  formatDate, formatMoney, formatNumber, formatPercent, formatSignedMoney, onImageError, pricing,
+  reasonLabel, reasonsFor, stockState, telUrl, whatsappUrl,
+} from './utils/format.js';
 
 const user = ref(null);
 function readThemePreference() {
@@ -72,6 +77,9 @@ const movementModalOpen = ref(false);
 const pendingConfirmation = ref(null);
 const editingProduct = ref(null);
 const editingSupplier = ref(null);
+// Product detail dialog: id of the open product, and the product to reopen after an edit.
+const detailProductId = ref(null);
+const detailReturnId = ref(null);
 // Validation feedback shown inside the open dialog (page notices sit behind the backdrop).
 const formError = ref('');
 const fieldErrors = ref({});
@@ -222,6 +230,23 @@ function ensureOverviewProduct() {
   if (exists) return;
   const first = dashboard.value.lowStockProducts?.[0] ?? catalog.value[0];
   overviewProductId.value = first ? String(first.id) : '';
+}
+
+function openProductDetail(productOrId) {
+  const id = typeof productOrId === 'object' ? productOrId?.id : productOrId;
+  if (!id) return;
+  detailProductId.value = id;
+}
+
+function editFromDetail(product) {
+  detailReturnId.value = product.id;
+  detailProductId.value = null;
+  openEditProduct(product);
+}
+
+function recordFromDetail(product) {
+  detailProductId.value = null;
+  openMovement(product);
 }
 
 function openProductInList(product) {
@@ -515,16 +540,20 @@ async function saveProduct() {
   clearNotices();
   clearFormErrors();
   try {
+    let reopenId = detailReturnId.value;
     if (editingProduct.value) {
       await put(`/products/${editingProduct.value.id}`, productPayload());
       showSuccess('Perubahan produk disimpan.');
     } else {
-      await post('/products', productPayload());
-      showSuccess('Produk baru ditambahkan. Catat stok awal lewat pergerakan stok.');
+      const created = await post('/products', productPayload());
+      reopenId = created.product.id;
+      showSuccess('Produk baru ditambahkan. Tambahkan foto, lalu catat stok awal lewat pergerakan stok.');
     }
     productModalOpen.value = false;
+    detailReturnId.value = null;
     await loadAll({ clear: false });
     activePage.value = 'products';
+    if (reopenId) detailProductId.value = reopenId;
   } catch (error) {
     handleFormError(error);
   } finally {
@@ -712,27 +741,6 @@ async function applyProductFilters() {
   }
 }
 
-function stockState(product) {
-  if (Number(product.warehouse_stock) === 0) return { label: 'Habis', tone: 'empty' };
-  if (Number(product.warehouse_stock) <= Number(product.reorder_point)) return { label: 'Perlu restock', tone: 'low' };
-  return { label: 'Tersedia', tone: 'good' };
-}
-
-function formatNumber(value) {
-  return new Intl.NumberFormat('id-ID').format(Number(value ?? 0));
-}
-
-function formatMoney(value, currency = 'IDR', emptyText = 'Belum diisi') {
-  if (value == null || value === '') return emptyText;
-  try {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency', currency: currency || 'IDR', maximumFractionDigits: 0,
-    }).format(Number(value));
-  } catch {
-    return `${currency} ${formatNumber(value)}`;
-  }
-}
-
 function formatReferencePrice(product) {
   const min = product.price_min;
   const max = product.price_max;
@@ -758,21 +766,8 @@ function movementIcon(type) {
   return { IN: ArrowDownToLine, OUT: ArrowUpFromLine, ADJUSTMENT: ArrowDownUp }[type] ?? History;
 }
 
-function formatDate(date) {
-  if (!date) return '—';
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return '—';
-  return new Intl.DateTimeFormat('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  }).format(parsed);
-}
-
 function productsForSupplier(supplierId) {
   return catalog.value.filter((product) => Number(product.supplier_id) === Number(supplierId)).length;
-}
-
-function onImageError(event) {
-  event.target.src = '/keyboard-placeholder.svg';
 }
 
 onMounted(async () => {
@@ -972,7 +967,7 @@ onMounted(async () => {
             </article>
 
             <article class="panel history-card">
-              <div class="card-head"><h2>Detail produk</h2><button class="round-button small" type="button" title="Buka di daftar produk" aria-label="Buka di daftar produk" @click="openProductInList(overviewProduct)"><ArrowUpRight :size="16" /></button></div>
+              <div class="card-head"><h2>Detail produk</h2><button class="round-button small" type="button" title="Buka detail produk" aria-label="Buka detail produk" @click="openProductDetail(overviewProduct)"><ArrowUpRight :size="16" /></button></div>
               <div v-if="overviewProduct" class="history-inner">
                 <label class="item-select"><span>Item ID:</span><select v-model="overviewProductId" aria-label="Pilih produk"><option v-for="product in catalog" :key="product.id" :value="String(product.id)">#{{ product.sku }}</option></select><ChevronDown :size="15" /></label>
                 <p class="history-name">{{ overviewProduct.name }}</p>
@@ -998,7 +993,7 @@ onMounted(async () => {
 
             <article class="panel rack-card">
               <div class="card-head"><h2>Peta rak</h2><span class="card-note">{{ catalog.filter((product) => product.storage_location).length }} lokasi</span></div>
-              <RackMap :products="catalog" :selected-id="overviewProductId" @select="(id) => { overviewProductId = String(id); }" />
+              <RackMap :products="catalog" :selected-id="overviewProductId" @select="(id) => { overviewProductId = String(id); openProductDetail(id); }" />
               <div class="rack-legend"><span><i class="good"></i>Aman</span><span><i class="low"></i>Restock</span><span><i class="empty"></i>Habis</span></div>
               <div class="location-chip"><MapPin :size="15" /><div><small>Lokasi</small><strong>Gudang utama · Rak A</strong></div></div>
             </article>
@@ -1020,7 +1015,7 @@ onMounted(async () => {
             <div v-else-if="pagedActivities.length" class="table-scroll"><table class="data-table activity-table stack-table"><thead><tr><th>ID</th><th>Produk</th><th>Kategori</th><th>Stok</th><th>Lokasi</th><th>Waktu</th><th>Dicatat oleh</th><th>Jenis</th></tr></thead><tbody>
               <tr v-for="item in pagedActivities" :key="item.id">
                 <td data-label="ID" class="mono-cell">{{ movementCode(item) }}</td>
-                <td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.sku }}</small></td>
+                <td class="cell-primary"><button type="button" class="clickable-name" @click="openProductDetail(item.product)"><strong>{{ item.product?.name }}</strong></button><small class="cell-subtext">{{ item.product?.sku }}</small></td>
                 <td data-label="Kategori">{{ item.product?.category?.name ?? '—' }}</td>
                 <td data-label="Stok"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }} unit</strong><small class="cell-subtext">{{ formatNumber(item.stock_before) }} → {{ formatNumber(item.stock_after) }}</small></td>
                 <td data-label="Lokasi">{{ item.product?.storage_location || '—' }}</td>
@@ -1053,13 +1048,13 @@ onMounted(async () => {
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat produk...</div>
             <div v-else-if="filteredProducts.length" class="table-scroll"><table class="data-table product-table stack-table"><thead><tr><th>Produk</th><th>Supplier / kontak</th><th>Harga beli / jual</th><th>Stok</th><th>Lokasi</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>
               <tr v-for="product in filteredProducts" :key="product.id">
-                <td class="cell-primary"><div class="product-cell"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong :title="product.name">{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></div></td>
+                <td class="cell-primary"><button type="button" class="product-cell clickable-name" :aria-label="`Buka detail ${product.name}`" @click="openProductDetail(product)"><img class="product-thumb" :src="product.image_url || '/keyboard-placeholder.svg'" :alt="product.name" loading="lazy" @error="onImageError" /><div><strong :title="product.name">{{ product.name }}</strong><small>{{ product.brand }} · {{ product.category?.name ?? 'Lainnya' }} · {{ product.sku }}</small></div></button></td>
                 <td data-label="Supplier"><div class="supplier-cell"><strong>{{ product.supplier?.name ?? 'Belum ditentukan' }}</strong><small>{{ product.supplier?.phone || product.supplier?.email || 'Kontak belum dicatat' }}</small></div></td>
                 <td data-label="Harga beli / jual" class="money-pair-cell"><div><span>Beli</span><strong :class="{ 'is-empty': product.purchase_price == null }">{{ formatMoney(product.purchase_price, product.currency, '—') }}</strong></div><div><span>Jual</span><strong :class="{ 'is-empty': product.selling_price == null }">{{ formatMoney(product.selling_price, product.currency, '—') }}</strong></div><small v-if="product.price_min != null || product.price_max != null" class="cell-subtext">Ref. {{ formatReferencePrice(product) }}</small></td>
                 <td data-label="Stok" class="span-2"><span class="stock-count" :class="stockState(product).tone">{{ formatNumber(product.warehouse_stock) }} <small>unit</small></span><small class="cell-subtext">min. {{ formatNumber(product.reorder_point) }}</small></td>
                 <td data-label="Lokasi" class="span-2"><span class="location-tag">{{ product.storage_location || '—' }}</span></td>
                 <td data-label="Kondisi" class="span-2"><span class="stock-badge" :class="stockState(product).tone"><span></span>{{ stockState(product).label }}</span></td>
-                <td class="cell-actions"><div class="row-actions"><a v-if="product.source_url" class="icon-button subtle" :href="product.source_url" target="_blank" rel="noopener noreferrer" title="Buka sumber produk" aria-label="Buka sumber produk"><ExternalLink :size="15" /></a><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td>
+                <td class="cell-actions"><div class="row-actions"><button class="icon-button subtle" type="button" title="Lihat detail" aria-label="Lihat detail produk" @click="openProductDetail(product)"><Eye :size="15" /></button><button class="icon-button subtle" title="Catat pergerakan stok" aria-label="Catat pergerakan stok" @click="openMovement(product)"><ArrowDownUp :size="15" /></button><template v-if="user.role === 'admin'"><button class="icon-button subtle" title="Edit produk" aria-label="Edit produk" @click="openEditProduct(product)"><Settings :size="15" /></button><button class="icon-button danger-quiet" title="Arsipkan produk" aria-label="Arsipkan produk" @click="archiveProduct(product)"><X :size="15" /></button></template></div></td>
               </tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><Package :size="22" /></div><strong>Produk tidak ditemukan</strong><span>Ubah kata pencarian atau filter, lalu coba lagi.</span><button v-if="user.role === 'admin'" class="button secondary small-button" @click="openCreateProduct()"><Plus :size="15" /> Tambah produk pertama</button></div>
@@ -1124,7 +1119,7 @@ onMounted(async () => {
             <div class="table-toolbar"><div class="search-field"><Search :size="17" /><input v-model="movementSearch" type="search" placeholder="Cari produk, SKU, pengguna, atau catatan..." aria-label="Cari riwayat stok" /><button v-if="movementSearch" class="clear-search" type="button" aria-label="Hapus pencarian" @click="movementSearch = ''"><X :size="14" /></button></div><select v-model="movementTypeFilter" class="filter-select" aria-label="Filter jenis pergerakan"><option value="">Semua aktivitas</option><option value="IN">Stok masuk</option><option value="OUT">Stok keluar</option><option value="ADJUSTMENT">Penyesuaian</option></select></div>
             <div v-if="loading" class="loading-inline"><span class="spinner"></span> Memuat riwayat...</div>
             <div v-else-if="filteredMovements.length" class="table-scroll"><table class="data-table movement-table stack-table"><thead><tr><th>Aktivitas</th><th>Produk</th><th>Stok sebelum / sesudah</th><th>Jumlah</th><th>Dicatat oleh</th><th>Waktu</th><th>Catatan</th></tr></thead><tbody>
-              <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><strong>{{ item.product?.name }}</strong><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
+              <tr v-for="item in filteredMovements" :key="item.id"><td data-label="Aktivitas"><span class="movement-kind" :class="`kind-${item.movement_type.toLowerCase()}`"><component :is="movementIcon(item.movement_type)" :size="14" /> {{ movementLabel(item.movement_type) }}</span></td><td class="cell-primary"><button type="button" class="clickable-name" @click="openProductDetail(item.product)"><strong>{{ item.product?.name }}</strong></button><small class="cell-subtext">{{ item.product?.brand }} · {{ item.product?.sku }}</small></td><td data-label="Sebelum → sesudah"><span class="balance-pair">{{ formatNumber(item.stock_before) }} <span>→</span> <strong>{{ formatNumber(item.stock_after) }}</strong></span></td><td data-label="Jumlah"><strong :class="movementTone(item.movement_type)">{{ movementSign(item.movement_type) }}{{ formatNumber(item.quantity) }}</strong> unit</td><td data-label="Dicatat oleh">{{ item.user?.name }}</td><td data-label="Waktu">{{ formatDate(item.createdAt ?? item.created_at) }}</td><td data-label="Catatan" class="note-cell">{{ item.note || '—' }}</td></tr>
             </tbody></table></div>
             <div v-else class="empty-state"><div class="empty-icon"><History :size="22" /></div><strong>{{ movements.length ? 'Tidak ada catatan yang cocok' : 'Belum ada riwayat' }}</strong><span>{{ movements.length ? 'Ubah kata pencarian atau filter aktivitas.' : 'Setiap perubahan saldo akan dicatat di halaman ini.' }}</span></div>
           </section>
@@ -1231,6 +1226,16 @@ onMounted(async () => {
         </form>
       </section>
     </div>
+
+    <ProductDetailModal
+      v-if="detailProductId"
+      :product-id="detailProductId"
+      :is-admin="user.role === 'admin'"
+      @close="detailProductId = null"
+      @edit="editFromDetail"
+      @record="recordFromDetail"
+      @changed="loadAll({ clear: false })"
+    />
 
     <div v-if="pendingConfirmation" class="modal-backdrop confirmation-backdrop" @click.self="cancelPendingConfirmation">
       <section class="modal-card confirmation-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-title" :aria-busy="busy">
