@@ -272,6 +272,7 @@ async function seed({ fresh = false } = {}) {
       } else {
         // Re-seeding fills missing values only; anything an admin already entered is kept.
         const defaults = productDefaults(source, categoryId, supplierId, index);
+        const pricesWereEmpty = product.purchase_price == null;
         await product.update({
           supplier_id: product.supplier_id ?? defaults.supplier_id,
           purchase_price: product.purchase_price ?? defaults.purchase_price,
@@ -279,6 +280,20 @@ async function seed({ fresh = false } = {}) {
           // Old demo codes (A-01) move to the rack format; a location typed by an admin is kept.
           storage_location: !product.storage_location || /^A-\d{2}$/.test(product.storage_location) ? defaults.storage_location : product.storage_location,
         }, { transaction });
+        // A database from before prices existed: give its unpriced demo history the
+        // simulated prices too, so the profit and loss card is not empty after upgrading.
+        if (pricesWereEmpty && product.purchase_price != null) {
+          await sequelize.query(`
+            UPDATE stock_movements
+            SET unit_cost = :cost,
+                unit_price = CASE WHEN reason IN ('SALE', 'RETURN_IN') THEN :price ELSE NULL END,
+                currency = :currency
+            WHERE product_id = :productId AND unit_cost IS NULL
+          `, {
+            replacements: { cost: product.purchase_price, price: product.selling_price, currency: product.currency, productId: product.id },
+            transaction,
+          });
+        }
       }
     });
   }
