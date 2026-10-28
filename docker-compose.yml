@@ -1,0 +1,22 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: noirgear-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-local-root-password}
+      MYSQL_DATABASE: ${DB_NAME:-noirgear_inventory}
+      MYSQL_USER: ${DB_USER:-noirgear_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-local-app-password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - noirgear_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD:-local-root-password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  noirgear_mysql_data:

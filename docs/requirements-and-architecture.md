@@ -8,7 +8,7 @@ The product source catalog contains 23 sample items across keyboards, switches, 
 
 ## User roles
 
-- **Admin:** view dashboard; create, read, update, and delete products; record stock movements; manage staff access.
+- **Admin:** view dashboard; create, read, update, and archive products; record stock movements.
 - **Staff:** view dashboard and products; record stock movements; cannot delete products or manage users.
 
 ## MVP features
@@ -33,7 +33,7 @@ The product source catalog contains 23 sample items across keyboards, switches, 
 - `categories` 1-to-many `products`.
 - `products` 1-to-many `stock_movements`.
 - `users` 1-to-many `stock_movements`.
-- `users` 1-to-many `sessions` (session records are persisted server-side).
+- Session records are persisted in MySQL by the session store. They are separate from the four domain tables.
 
 See [erd.mmd](./erd.mmd).
 

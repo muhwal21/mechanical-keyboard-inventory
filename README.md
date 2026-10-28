@@ -36,13 +36,19 @@ docker-compose.yml       local MySQL service
 
 ## Menjalankan project
 
-1. Salin `.env.example` menjadi `.env`, lalu isi kredensial database dan secret session.
-2. Jalankan MySQL lokal, atau gunakan `docker compose up -d mysql`.
-3. Jalankan `npm install` di root project.
-4. Jalankan migrasi dan seed sesuai petunjuk yang akan dilengkapi setelah backend siap.
-5. Jalankan `npm run dev` untuk membuka Vue dan API saat pengembangan.
+1. Salin `.env.example` menjadi `.env`.
+2. Ganti `SESSION_SECRET` dengan hasil `openssl rand -hex 32`, lalu ganti password admin demo dan password MySQL di `.env`. Password admin minimal 12 karakter. File `.env` tidak dikomit.
+3. Pastikan Docker Desktop berjalan, lalu jalankan `docker compose up -d mysql` (atau siapkan MySQL 8.4 lokal dengan nilai `.env` yang sama).
+4. Jalankan `npm install` di root project.
+5. Unduh gambar katalog ke asset lokal dengan `npm run assets:download`.
+6. Buat tabel dengan `npm run db:sync`, lalu isi katalog dan admin demo dengan `npm run db:seed`.
+7. Jalankan `npm run dev`, lalu buka `http://localhost:5173`.
+
+Jika ingin akun staff untuk demo role, isi ketiga variabel `SEED_STAFF_*`; biarkan semuanya kosong jika tidak diperlukan. Data stok seed bersifat simulasi. Login menggunakan `SEED_ADMIN_EMAIL` dan `SEED_ADMIN_PASSWORD` yang kamu isi di `.env`.
 
 Nilai stok awal adalah data simulasi untuk demo, bukan stok resmi Noir Gear. Kredensial admin demo akan disimpan di environment lokal dan tidak dikomit ke repository.
+
+Gambar produk disimpan di `client/public/images/` untuk dipakai saat demo tanpa hotlink CDN. URL produk sumber tetap dicatat agar referensi katalog bisa diperiksa.
 
 ## Rencana deliverables
 

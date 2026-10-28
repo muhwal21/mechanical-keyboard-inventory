@@ -2,7 +2,6 @@ erDiagram
   USERS ||--o{ STOCK_MOVEMENTS : records
   PRODUCTS ||--o{ STOCK_MOVEMENTS : changes
   CATEGORIES ||--o{ PRODUCTS : groups
-  USERS ||--o{ SESSIONS : owns
 
   USERS {
     int id PK
@@ -39,9 +38,4 @@ erDiagram
     int stock_after
     string note
     datetime created_at
-  }
-  SESSIONS {
-    string session_id PK
-    int user_id FK
-    datetime expires
   }

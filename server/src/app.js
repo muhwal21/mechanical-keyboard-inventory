@@ -1,0 +1,65 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import cors from 'cors';
+import express from 'express';
+import session from 'express-session';
+import helmet from 'helmet';
+import { config, isProduction } from './config.js';
+import apiRoutes from './routes/apiRoutes.js';
+import { csrfProtection } from './middleware/csrf.js';
+import { errorHandler, notFound } from './middleware/errorHandler.js';
+
+const require = createRequire(import.meta.url);
+const MySQLStore = require('express-mysql-session')(session);
+const sessionStore = new MySQLStore({
+  ...config.database,
+  database: config.database.name,
+  createDatabaseTable: true,
+  clearExpired: true,
+  expiration: 8 * 60 * 60 * 1000,
+  checkExpirationInterval: 15 * 60 * 1000,
+  schema: {
+    tableName: 'sessions',
+    columnNames: { session_id: 'session_id', expires: 'expires', data: 'data' },
+  },
+});
+
+const app = express();
+if (isProduction) app.set('trust proxy', 1);
+
+app.disable('x-powered-by');
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+app.use(cors({ origin: config.clientOrigin, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(session({
+  name: config.sessionCookieName,
+  secret: config.sessionSecret,
+  store: sessionStore,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: 'lax',
+    maxAge: 8 * 60 * 60 * 1000,
+  },
+}));
+
+app.use('/api', csrfProtection, apiRoutes);
+
+if (isProduction) {
+  const currentFile = fileURLToPath(import.meta.url);
+  const clientDist = path.resolve(path.dirname(currentFile), '../../client/dist');
+  app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
+  app.get(/.*/, (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    return res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
+app.use(notFound);
+app.use(errorHandler);
+
+export { app, sessionStore };
